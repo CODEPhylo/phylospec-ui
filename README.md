@@ -102,3 +102,10 @@ engine may not read them. They are set in one place, `ScriptWriter.mcmcStatement
 - **Operators.** These have no PhyloSpec equivalent by design — they are machinery an engine chooses,
   not part of the model description — so there is no Operators tab.
 - **Starting trees and state initialisation**, for the same reason.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
+
+The alignments in `examples/` are redistributed from BEAST 2.8; see
+[examples/README.md](examples/README.md) for their provenance and citations.
