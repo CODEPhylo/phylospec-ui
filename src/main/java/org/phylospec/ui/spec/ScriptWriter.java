@@ -139,6 +139,8 @@ public final class ScriptWriter {
      */
     private void priorStatements(Component component, List<String> statements) {
         for (Param param : component.params()) {
+            // An argument left out of the call would leave its prior declared but unused.
+            if (!param.includeProperty().get()) continue;
             Component nested = param.priorProperty().get();
             if (nested != null && !param.isEstimated()) {
                 priorStatements(nested, statements);

@@ -73,11 +73,32 @@ code; only the curated per-tab lists in `Analysis` name components explicitly.
 Structural arguments — `tree`, `taxa`, `numSites`, `qMatrix`, `siteRates`, `branchRates` — are
 supplied by `ScriptWriter` from the shape of the analysis rather than being asked of the user.
 
+## Opening a script
+
+`File > Open…` reads a `.phylospec` script back onto the tabs. `ScriptReader` is the inverse of
+`ScriptWriter`: it recognises the script by the names the writer gives its structural variables —
+`qMatrix`, `siteRates`, `branchRates` — and by the declared type of the tree, and treats everything
+else drawn in the `model` block as a prior on an estimated value.
+
+The tabs express a subset of PhyloSpec, so not every valid script can be represented. A script that
+falls outside it is **refused outright** rather than partly loaded: a half-loaded analysis looks
+complete, and the next save would quietly discard whatever could not be mapped. The message names
+what stopped it.
+
+Alignments are referenced by path, so a script opened on another machine may point at files that are
+not there. The model still loads and the paths are reported, since the counts are informational and
+the engine reads the files for real.
+
 ## Validation
 
 `Validator` runs the real `Lexer`, `Parser` and `TypeResolver` over the generated script and reports
-the first problem in the status bar. `ScriptWriterTest` generates every model combination the tabs
-can express (360 of them) and asserts that all of them parse and type-check.
+the first problem in the status bar. `ScriptWriterTest` generates every model the tabs can express —
+360 generator combinations, 89 estimate ticks, 149 prior choices and every optional argument dropped
+— and asserts that all of them parse and type-check.
+
+`ScriptReaderTest` puts the same space through `write → read → write` and asserts the two scripts are
+identical. A fix point on the script is the property that matters: an `Analysis` has no equality of
+its own, and the script is what the user keeps.
 
 Note that building a `ComponentResolver` qualifies the component library's type names in place, and
 a library can only be registered once — so `Library` keeps a separate, independently loaded copy for
@@ -97,8 +118,6 @@ engine may not read them. They are set in one place, `ScriptWriter.mcmcStatement
 
 - **Unlinked partitions.** Alignments all share one site model, clock model and tree, which is
   BEAUti's state immediately after import. Per-partition models are not yet expressible here.
-- **Opening an existing script.** The GUI writes `.phylospec` but does not read it back; that needs a
-  mapping from the parsed AST onto the tabs.
 - **Operators.** These have no PhyloSpec equivalent by design — they are machinery an engine chooses,
   not part of the model description — so there is no Operators tab.
 - **Starting trees and state initialisation**, for the same reason.

@@ -40,6 +40,7 @@ import org.phylospec.ui.panel.PartitionsPanel;
 import org.phylospec.ui.panel.PriorsPanel;
 import org.phylospec.ui.panel.TipDatesPanel;
 import org.phylospec.ui.spec.Library;
+import org.phylospec.ui.spec.ScriptReader;
 import org.phylospec.ui.spec.ScriptWriter;
 import org.phylospec.ui.spec.Validator;
 
@@ -158,6 +159,10 @@ public class PhyloSpecUI extends Application {
     }
 
     private MenuBar buildMenu(Stage stage) {
+        MenuItem open = new MenuItem("Open…");
+        open.setAccelerator(KeyCombination.keyCombination("Shortcut+O"));
+        open.setOnAction(event -> open(stage));
+
         MenuItem save = new MenuItem("Save");
         save.setAccelerator(KeyCombination.keyCombination("Shortcut+S"));
         save.setOnAction(event -> save(stage, false));
@@ -178,7 +183,8 @@ public class PhyloSpecUI extends Application {
         quit.setOnAction(event -> stage.close());
 
         Menu file = new Menu("File");
-        file.getItems().addAll(save, saveAs, copy, new SeparatorMenuItem(), quit);
+        file.getItems().addAll(open, new SeparatorMenuItem(), save, saveAs, copy,
+                new SeparatorMenuItem(), quit);
 
         CheckMenuItem showScript = new CheckMenuItem("Show PhyloSpec script");
         showScript.setSelected(true);
@@ -235,6 +241,54 @@ public class PhyloSpecUI extends Application {
         }
         status.setTooltip(problems.isEmpty() ? null
                 : new javafx.scene.control.Tooltip(String.join("\n", problems)));
+    }
+
+    /**
+     * Loads a script back onto the tabs. A script the tabs cannot express is refused outright rather
+     * than partly loaded, since a partly loaded analysis looks complete and the next save would
+     * quietly drop whatever could not be read.
+     */
+    private void open(Stage stage) {
+        FileChooser chooser = new FileChooser();
+        chooser.setTitle("Open PhyloSpec script");
+        chooser.getExtensionFilters().add(
+                new FileChooser.ExtensionFilter("PhyloSpec script", "*.phylospec"));
+        File chosen = chooser.showOpenDialog(stage);
+        if (chosen == null) return;
+
+        Path path = chosen.toPath();
+        Analysis loaded;
+        try {
+            loaded = ScriptReader.read(analysis.library(), Files.readString(path));
+        } catch (IOException e) {
+            new Alert(Alert.AlertType.ERROR, "Could not read " + path.getFileName() + ": "
+                    + e.getMessage()).showAndWait();
+            return;
+        } catch (ScriptReader.Unsupported e) {
+            new Alert(Alert.AlertType.ERROR, "Could not open " + path.getFileName() + ".\n\n"
+                    + e.getMessage()).showAndWait();
+            return;
+        }
+
+        analysis = loaded;
+        split.getItems().set(0, buildTabs());
+        savedTo = path;
+        lastScript = "";
+        stage.setTitle("PhyloSpec — " + path.getFileName());
+        warnAboutMissingAlignments();
+    }
+
+    /** The script names its alignments by path, so opening it elsewhere can leave them unreadable. */
+    private void warnAboutMissingAlignments() {
+        List<String> missing = analysis.partitions().stream()
+                .map(partition -> partition.fileProperty().get())
+                .filter(file -> !Files.isRegularFile(Path.of(file)))
+                .toList();
+        if (missing.isEmpty()) return;
+        new Alert(Alert.AlertType.WARNING,
+                "The script refers to alignments that are not where it says they are:\n\n"
+                        + String.join("\n", missing)
+                        + "\n\nThe model has loaded, but these paths need correcting.").showAndWait();
     }
 
     private void save(Stage stage, boolean askForPath) {
