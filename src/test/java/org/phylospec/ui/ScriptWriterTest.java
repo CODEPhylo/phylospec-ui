@@ -8,12 +8,15 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Function;
 
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import org.phylospec.components.Generator;
 import org.phylospec.ui.model.Analysis;
+import org.phylospec.ui.model.Component;
 import org.phylospec.ui.model.Param;
 import org.phylospec.ui.model.Partition;
 import org.phylospec.ui.spec.Library;
@@ -25,19 +28,25 @@ import org.phylospec.ui.spec.Validator;
  *
  * <p>The interesting failure mode of a script generator is emitting something that does not parse or
  * does not type-check, so every model the tabs can express is generated and run through the real
- * PhyloSpec parser and type resolver.
+ * PhyloSpec parser and type resolver. The tabs vary along four axes — which generator fills each
+ * model slot, which of its arguments are estimated, which prior each estimated argument draws from,
+ * and whether an optional argument is included — and there is a test for each.
  */
 class ScriptWriterTest {
 
+    /** Deep enough for a coalescent's population function and that function's own arguments. */
+    private static final int MAX_NESTING = 4;
+
+    @TempDir
+    static Path directory;
+
     private static Library library;
+    private static Path alignment;
 
     @BeforeAll
-    static void loadLibrary() {
+    static void loadLibraryAndWriteAlignment() throws IOException {
         library = Library.load();
-    }
-
-    private Analysis analysisWithData(Path directory) throws IOException {
-        Path alignment = directory.resolve("primates.nex");
+        alignment = directory.resolve("primates.nex");
         Files.writeString(alignment, """
                 #NEXUS
                 begin data;
@@ -51,14 +60,17 @@ class ScriptWriterTest {
                   ;
                 end;
                 """);
+    }
+
+    private Analysis analysisWithData() {
         Analysis analysis = new Analysis(library);
         analysis.partitions().add(new Partition(alignment));
         return analysis;
     }
 
     @Test
-    void readsTaxonAndSiteCountsFromNexus(@TempDir Path directory) throws IOException {
-        Partition partition = analysisWithData(directory).partitions().get(0);
+    void readsTaxonAndSiteCountsFromNexus() {
+        Partition partition = analysisWithData().partitions().get(0);
         assertEquals(4, partition.taxaProperty().get());
         assertEquals(8, partition.sitesProperty().get());
         assertEquals("fromNexus", partition.loader());
@@ -66,8 +78,8 @@ class ScriptWriterTest {
     }
 
     @Test
-    void defaultAnalysisIsValid(@TempDir Path directory) throws IOException {
-        Analysis analysis = analysisWithData(directory);
+    void defaultAnalysisIsValid() {
+        Analysis analysis = analysisWithData();
         String script = ScriptWriter.write(analysis);
         assertEquals(List.of(), Validator.validate(library, script));
         assertTrue(script.contains("Tree tree ~ Yule("), script);
@@ -75,8 +87,8 @@ class ScriptWriterTest {
     }
 
     @Test
-    void tipDatesBecomeAParseArgument(@TempDir Path directory) throws IOException {
-        Analysis analysis = analysisWithData(directory);
+    void tipDatesBecomeAParseArgument() {
+        Analysis analysis = analysisWithData();
         analysis.partitions().get(0).useTipDatesProperty().set(true);
         String script = ScriptWriter.write(analysis);
         assertTrue(script.contains("age=parse(delimiter=\"_\", part=2)"), script);
@@ -127,7 +139,7 @@ class ScriptWriterTest {
 
     /** Every combination the tabs can express must parse and type-check. */
     @Test
-    void everyModelCombinationIsValid(@TempDir Path directory) throws IOException {
+    void everyModelCombinationIsValid() {
         List<String> failures = new ArrayList<>();
         int checked = 0;
 
@@ -137,7 +149,7 @@ class ScriptWriterTest {
                     for (boolean gammaRates : new boolean[] {false, true}) {
                         int overloads = library.overloads(treePrior).size();
                         for (int overload = 0; overload < overloads; overload++) {
-                            Analysis analysis = analysisWithData(directory);
+                            Analysis analysis = analysisWithData();
                             analysis.substitutionModel().generatorProperty()
                                     .set(library.overloads(substitution).get(0));
                             analysis.clockModel().generatorProperty().set(library.overloads(clock).get(0));
@@ -166,5 +178,163 @@ class ScriptWriterTest {
 
         assertTrue(checked > 300, "expected the tabs to express many models, got " + checked);
         assertEquals(List.of(), failures);
+    }
+
+    // ------------------------------------------------------- estimates and priors
+
+    /** One model tab: the generators it offers, and the component it edits. */
+    private record Slot(String label, List<String> generators, Function<Analysis, Component> component) {}
+
+    private static final List<Slot> SLOTS = List.of(
+            new Slot("site model", Analysis.SUBSTITUTION_MODELS, Analysis::substitutionModel),
+            new Slot("site rates", Analysis.SITE_RATE_MODELS, Analysis::siteRates),
+            new Slot("clock model", Analysis.CLOCK_MODELS, Analysis::clockModel),
+            new Slot("tree prior", Analysis.TREE_PRIORS, Analysis::treePrior));
+
+    /**
+     * Ticking "estimate" replaces a literal with a random variable and adds a {@code ~} statement, so
+     * it changes the shape of the model block rather than just a value. Every tick the tabs offer is
+     * flipped from its default, one at a time and then all together.
+     */
+    @Test
+    void everyEstimateTickIsValid() {
+        List<String> failures = new ArrayList<>();
+        int checked = 0;
+
+        for (Slot slot : SLOTS) {
+            List<Generator> offered = library.lookup(slot.generators());
+            for (Generator generator : offered) {
+                String label = slot.label() + " " + Component.describe(generator, offered);
+
+                for (int index = 0; index < estimableCount(slot, generator); index++) {
+                    Analysis analysis = analysisWith(slot, generator);
+                    Param param = estimable(slot.component().apply(analysis)).get(index);
+                    boolean was = param.isEstimated();
+                    param.estimateProperty().set(!was);
+                    checked++;
+                    check(failures, analysis, label + ": " + param.name() + (was ? " fixed" : " estimated"));
+                }
+
+                for (boolean all : new boolean[] {true, false}) {
+                    Analysis analysis = analysisWith(slot, generator);
+                    for (Param param : estimable(slot.component().apply(analysis))) {
+                        param.estimateProperty().set(all);
+                    }
+                    checked++;
+                    check(failures, analysis, label + ": everything " + (all ? "estimated" : "fixed"));
+                }
+            }
+        }
+
+        assertTrue(checked > 50, "expected many estimate combinations, got " + checked);
+        assertEquals(List.of(), failures);
+    }
+
+    /**
+     * The Priors tab offers every distribution whose support fits the value being estimated. Choosing
+     * any of them must still type-check — the support test is the GUI's own, so this is where it would
+     * show up if it were more permissive than the type resolver.
+     */
+    @Test
+    void everyPriorChoiceIsValid() {
+        List<String> failures = new ArrayList<>();
+        int checked = 0;
+
+        for (Slot slot : SLOTS) {
+            List<Generator> offered = library.lookup(slot.generators());
+            for (Generator generator : offered) {
+                String label = slot.label() + " " + Component.describe(generator, offered);
+
+                for (int index = 0; index < estimableCount(slot, generator); index++) {
+                    Analysis probe = analysisWith(slot, generator);
+                    Param probed = estimable(slot.component().apply(probe)).get(index);
+                    if (!probed.estimable()) continue;
+
+                    for (Generator prior : library.priorsFor(probed.priorSupport())) {
+                        Analysis analysis = analysisWith(slot, generator);
+                        Param param = estimable(slot.component().apply(analysis)).get(index);
+                        param.estimateProperty().set(true);
+                        // The Priors tab builds the chosen distribution exactly this way.
+                        param.priorProperty().set(Component.nested(prior, library, false));
+                        checked++;
+                        check(failures, analysis, label + ": " + param.name() + " ~ " + prior.getName());
+                    }
+                }
+            }
+        }
+
+        assertTrue(checked > 100, "expected many prior combinations, got " + checked);
+        assertEquals(List.of(), failures);
+    }
+
+    /** Optional arguments can be left out, which drops them from the call. */
+    @Test
+    void everyOptionalArgumentCanBeDropped() {
+        List<String> failures = new ArrayList<>();
+        int checked = 0;
+
+        for (Slot slot : SLOTS) {
+            List<Generator> offered = library.lookup(slot.generators());
+            for (Generator generator : offered) {
+                String label = slot.label() + " " + Component.describe(generator, offered);
+
+                for (int index = 0; index < estimableCount(slot, generator); index++) {
+                    Analysis analysis = analysisWith(slot, generator);
+                    Param param = estimable(slot.component().apply(analysis)).get(index);
+                    if (param.required()) continue;
+                    param.includeProperty().set(false);
+                    checked++;
+                    check(failures, analysis, label + ": " + param.name() + " omitted");
+                }
+            }
+        }
+
+        assertEquals(List.of(), failures);
+        assertTrue(checked > 0, "expected the tabs to offer some optional arguments");
+    }
+
+    private Analysis analysisWith(Slot slot, Generator generator) {
+        Analysis analysis = analysisWithData();
+        slot.component().apply(analysis).generatorProperty().set(generator);
+        return analysis;
+    }
+
+    private int estimableCount(Slot slot, Generator generator) {
+        return estimable(slot.component().apply(analysisWith(slot, generator))).size();
+    }
+
+    /**
+     * Every param the user could tick "estimate" on, in the order the tabs present them, descending
+     * into nested functions the way {@link Analysis#estimatedParams()} does — a coalescent's
+     * population size is estimated through its population function, not directly.
+     */
+    private static List<Param> estimable(Component component) {
+        List<Param> found = new ArrayList<>();
+        collectEstimable(component, found, 0);
+        return found;
+    }
+
+    private static void collectEstimable(Component component, List<Param> into, int depth) {
+        if (component == null || depth > MAX_NESTING) return;
+        for (Param param : component.params()) {
+            if (param.estimable()) into.add(param);
+            Component nested = param.priorProperty().get();
+            if (nested != null && !param.isEstimated()) collectEstimable(nested, into, depth + 1);
+        }
+    }
+
+    /**
+     * Generates and validates, recording the failure rather than stopping at the first one, so a run
+     * reports the whole set. A placeholder is a failure too: the writer emits one where the user still
+     * has to supply something, and the tabs are supposed to have supplied it already.
+     */
+    private static void check(List<String> failures, Analysis analysis, String what) {
+        String script = ScriptWriter.write(analysis);
+        List<String> problems = Validator.validate(library, script);
+        if (!problems.isEmpty()) {
+            failures.add(what + " -> " + problems.get(0));
+        } else if (script.contains("/*") || script.contains("has no prior")) {
+            failures.add(what + " -> unfilled placeholder");
+        }
     }
 }
