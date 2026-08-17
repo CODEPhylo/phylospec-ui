@@ -1,0 +1,145 @@
+/*
+ * A restrained, BEAUti-like surface: system font, small type, grey chrome against white content.
+ * Colours are declared once on .root so a dark variant only has to override this block.
+ */
+
+.root {
+    -ps-text: #1c1c1e;
+    -ps-muted: #6d6d72;
+    -ps-chrome: #ececec;
+    -ps-content: #ffffff;
+    -ps-line: #c8c8c8;
+    -ps-accent: #2b6cb0;
+    -ps-error: #a02020;
+    -ps-ok: #2f6b34;
+
+    -fx-font-family: -apple-system, "Segoe UI", "Helvetica Neue", sans-serif;
+    -fx-font-size: 12px;
+    -fx-text-fill: -ps-text;
+    -fx-background-color: -ps-chrome;
+}
+
+/* ---------------------------------------------------------------- tabs */
+
+.tab-pane > .tab-header-area > .tab-header-background {
+    -fx-background-color: -ps-chrome;
+    -fx-border-color: transparent transparent -ps-line transparent;
+    -fx-border-width: 0 0 1 0;
+}
+
+.tab-pane > .tab-header-area {
+    -fx-padding: 4 6 0 6;
+}
+
+.tab-pane > .tab-header-area > .headers-region > .tab {
+    -fx-background-color: transparent;
+    -fx-background-radius: 0;
+    -fx-padding: 5 14 5 14;
+}
+
+.tab-pane > .tab-header-area > .headers-region > .tab:selected {
+    -fx-background-color: -ps-content;
+    -fx-border-color: -ps-line -ps-line transparent -ps-line;
+    -fx-border-width: 1 1 0 1;
+}
+
+.tab-pane > .tab-header-area > .headers-region > .tab .tab-label {
+    -fx-text-fill: -ps-muted;
+}
+
+.tab-pane > .tab-header-area > .headers-region > .tab:selected .tab-label {
+    -fx-text-fill: -ps-text;
+    -fx-font-weight: bold;
+}
+
+.tab-pane > .tab-content-area {
+    -fx-background-color: -ps-content;
+}
+
+.tab-pane:focused > .tab-header-area > .headers-region > .tab:selected .focus-indicator {
+    -fx-border-color: transparent;
+}
+
+/* -------------------------------------------------------------- panels */
+
+.panel,
+.scroll-pane,
+.scroll-pane > .viewport {
+    -fx-background-color: -ps-content;
+}
+
+.panel-caption {
+    -fx-text-fill: -ps-muted;
+    -fx-font-style: italic;
+    -fx-padding: 0 0 4 0;
+}
+
+.panel-note {
+    -fx-text-fill: -ps-muted;
+    -fx-font-size: 11px;
+}
+
+.form-label {
+    -fx-text-fill: -ps-text;
+}
+
+.wired-value {
+    -fx-text-fill: -ps-muted;
+    -fx-font-family: "SF Mono", "Menlo", "Consolas", monospace;
+    -fx-font-size: 11px;
+}
+
+/* -------------------------------------------------------------- tables */
+
+.table-view {
+    -fx-background-color: -ps-content;
+    -fx-border-color: -ps-line;
+}
+
+.table-view .column-header-background {
+    -fx-background-color: -ps-chrome;
+}
+
+.table-view .column-header {
+    -fx-background-color: transparent;
+    -fx-border-color: transparent -ps-line transparent transparent;
+}
+
+/* -------------------------------------------------- generated script */
+
+.script-pane {
+    -fx-background-color: -ps-chrome;
+    -fx-border-color: -ps-line transparent transparent transparent;
+}
+
+.script-heading {
+    -fx-text-fill: -ps-muted;
+    -fx-font-size: 11px;
+    -fx-padding: 6 10 4 10;
+}
+
+.script {
+    -fx-font-family: "SF Mono", "Menlo", "Consolas", monospace;
+    -fx-font-size: 12px;
+}
+
+.script .content {
+    -fx-background-color: -ps-content;
+}
+
+/* ---------------------------------------------------------- status bar */
+
+.status-bar {
+    -fx-padding: 5 10 5 10;
+    -fx-background-color: -ps-chrome;
+    -fx-border-color: -ps-line transparent transparent transparent;
+    -fx-border-width: 1 0 0 0;
+}
+
+.status-ok {
+    -fx-text-fill: -ps-ok;
+}
+
+.status-error {
+    -fx-text-fill: -ps-error;
+}

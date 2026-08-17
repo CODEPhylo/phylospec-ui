@@ -1,0 +1,5 @@
+target/
+*.phylospec
+.idea/
+*.iml
+.DS_Store

@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Launches PhyloSpec UI, building first if necessary.
+set -euo pipefail
+
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+classes="$here/target/classes"
+classpath_file="$here/target/classpath.txt"
+
+if [[ ! -d "$classes" || ! -f "$classpath_file" ]]; then
+    echo "Building..." >&2
+    (cd "$here" && mvn -q -o package -DskipTests)
+fi
+
+exec java -cp "$classes:$(cat "$classpath_file")" org.phylospec.ui.Launcher "$@"
