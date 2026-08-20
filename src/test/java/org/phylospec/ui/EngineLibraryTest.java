@@ -453,26 +453,68 @@ class EngineLibraryTest {
         Analysis analysis = analysisWithData(withBeast);
         analysis.likelihood().generatorProperty().set(withBeast.overloads("SNAPP").get(0));
 
-        assertEquals(List.of("coalescentRate", "u", "v", "nonPolymorphic"),
+        assertEquals(List.of("theta", "mutationRateU", "mutationRateV",
+                        "nonPolymorphic", "mutationOnlyAtRoot", "dominant"),
                 analysis.likelihood().params().stream().map(Param::name).toList());
-        assertTrue(analysis.estimatedParams().stream().map(Param::name).toList().containsAll(
-                List.of("u", "v")), "required rates are estimated by default");
+        assertTrue(analysis.estimatedParams().stream().map(Param::name).toList()
+                .containsAll(List.of("mutationRateU", "mutationRateV")),
+                "the required rates are estimated by default");
 
-        assertTrue(analysis.likelihoodNeeds("coalescentRate"));
-        assertFalse(analysis.likelihoodNeeds("nonPolymorphic"));
+        assertTrue(analysis.likelihoodNeeds("theta"));
+        assertFalse(analysis.likelihoodNeeds("dominant"));
     }
 
-    /** Every partition is observed under the same likelihood, so a script giving two is refused. */
+    /**
+     * SNAPP's theta and coalescenceRate are XOR inputs in BEAST, which is two signatures here. Both
+     * have to write and read back, and the reader has to tell them apart — they differ only in the
+     * name of that one argument.
+     */
+    @Test
+    void bothSnappParameterisationsRoundTrip() {
+        List<Generator> overloads = withBeast.overloads("SNAPP");
+        assertEquals(2, overloads.size());
+
+        for (Generator overload : overloads) {
+            Analysis analysis = analysisWithData(withBeast);
+            analysis.likelihood().generatorProperty().set(overload);
+            analysis.substitutionModel().generatorProperty().set(null);
+            analysis.siteRates().generatorProperty().set(null);
+            analysis.clockModel().generatorProperty().set(null);
+
+            String parameterisation = overload.getArguments().get(1).getName();
+            String script = ScriptWriter.write(analysis);
+            assertTrue(script.contains(parameterisation + "="), script);
+            assertEquals(List.of(), Validator.validate(withBeast, script), parameterisation);
+
+            Analysis reloaded = ScriptReader.read(withBeast, script);
+            assertEquals(overload, reloaded.likelihood().generator(), parameterisation);
+            assertEquals(script, ScriptWriter.write(reloaded), parameterisation);
+        }
+    }
+
+    /**
+     * Every partition is observed under the same likelihood, so a script that gives two of them
+     * different ones says something the tabs cannot hold. SNAPP's two parameterisations make the
+     * case with two calls that are each perfectly valid.
+     */
     @Test
     void differingLikelihoodsAcrossPartitionsAreRefused() {
         Analysis analysis = analysisWithData(withBeast);
+        analysis.addPartition(Path.of("examples", "dna.nex"));
+        analysis.likelihood().generatorProperty().set(withBeast.overloads("SNAPP").get(0));
+        analysis.substitutionModel().generatorProperty().set(null);
+        analysis.siteRates().generatorProperty().set(null);
+        analysis.clockModel().generatorProperty().set(null);
+
         String script = ScriptWriter.write(analysis);
-        String doubled = script.replace("}\n\nmcmc {",
-                "    Alignment<Character> second ~ SNAPP(tree=tree, coalescentRate=[1.0],\n"
-                        + "        u=1.0, v=1.0) observed as primates\n}\n\nmcmc {");
+        assertEquals(List.of(), Validator.validate(withBeast, script), script);
+
+        int last = script.lastIndexOf("theta=");
+        String mixed = script.substring(0, last) + "coalescenceRate=" + script.substring(last + 6);
+        assertEquals(List.of(), Validator.validate(withBeast, mixed), "both calls must be valid");
 
         ScriptReader.Unsupported refusal = assertThrows(ScriptReader.Unsupported.class,
-                () -> ScriptReader.read(withBeast, doubled));
+                () -> ScriptReader.read(withBeast, mixed));
         assertTrue(refusal.getMessage().contains("different likelihoods"), refusal.getMessage());
     }
 

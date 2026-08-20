@@ -249,39 +249,106 @@
       {
         "name": "SNAPP",
         "namespace": "beast.evolution.likelihood",
-        "description": "Biallelic SNP likelihood, integrating over gene trees within a species tree. Observes Alignment<Character> because that is what the loaders produce; PhyloSpec has no way for fromNexus to say it read binary data. Argument names follow SNAPP's BEAST inputs approximately.",
+        "description": "Biallelic SNP likelihood, integrating analytically over gene trees within a species tree. Observes Alignment<Character> because that is what the loaders produce; PhyloSpec has no way for fromNexus to say it read binary data. The engine-only inputs \u2014 ascertainment counts, initFromTree and the diagnostics \u2014 are left out.",
         "generatedType": "Distribution<Alignment<Character; numTaxa=tree.numTaxa>>",
         "arguments": [
           {
             "name": "tree",
             "type": "Tree",
             "required": true,
-            "description": "The species tree the gene trees are integrated within."
+            "description": "The species tree the gene trees are integrated over."
           },
           {
-            "name": "coalescentRate",
-            "type": "Vector<Rate>",
+            "name": "theta",
+            "type": "Vector<PositiveReal; num=tree.numNodes>",
             "required": true,
-            "description": "Coalescent rate per species-tree branch."
+            "description": "Population size for each node of the tree."
           },
           {
-            "name": "u",
+            "name": "mutationRateU",
             "type": "Rate",
             "required": true,
-            "description": "Mutation rate from the green to the red allele."
+            "description": "Instantaneous rate of mutating from the 0 allele to the 1 allele."
           },
           {
-            "name": "v",
+            "name": "mutationRateV",
             "type": "Rate",
             "required": true,
-            "description": "Mutation rate from the red to the green allele."
+            "description": "Instantaneous rate of mutating from the 1 allele to the 0 allele."
           },
           {
             "name": "nonPolymorphic",
             "type": "Boolean",
             "required": false,
             "default": false,
-            "description": "Whether monomorphic sites are counted in the likelihood."
+            "description": "Whether to condition on the absence of monomorphic sites. BEAST spells this input non-polymorphic, which is not a legal identifier here."
+          },
+          {
+            "name": "mutationOnlyAtRoot",
+            "type": "Boolean",
+            "required": false,
+            "default": false,
+            "description": "Emulate RoyChoudhury et al. (2008), where mutations occur only in the ancestral population."
+          },
+          {
+            "name": "dominant",
+            "type": "Boolean",
+            "required": false,
+            "default": false,
+            "description": "Whether alleles are dominant."
+          }
+        ]
+      },
+      {
+        "name": "SNAPP",
+        "namespace": "beast.evolution.likelihood",
+        "description": "Biallelic SNP likelihood, integrating analytically over gene trees within a species tree. Observes Alignment<Character> because that is what the loaders produce; PhyloSpec has no way for fromNexus to say it read binary data. The engine-only inputs \u2014 ascertainment counts, initFromTree and the diagnostics \u2014 are left out.",
+        "generatedType": "Distribution<Alignment<Character; numTaxa=tree.numTaxa>>",
+        "arguments": [
+          {
+            "name": "tree",
+            "type": "Tree",
+            "required": true,
+            "description": "The species tree the gene trees are integrated over."
+          },
+          {
+            "name": "coalescenceRate",
+            "type": "Vector<Rate; num=tree.numNodes>",
+            "required": true,
+            "description": "Coalescence rate for each node of the tree, the reciprocal parameterisation of theta."
+          },
+          {
+            "name": "mutationRateU",
+            "type": "Rate",
+            "required": true,
+            "description": "Instantaneous rate of mutating from the 0 allele to the 1 allele."
+          },
+          {
+            "name": "mutationRateV",
+            "type": "Rate",
+            "required": true,
+            "description": "Instantaneous rate of mutating from the 1 allele to the 0 allele."
+          },
+          {
+            "name": "nonPolymorphic",
+            "type": "Boolean",
+            "required": false,
+            "default": false,
+            "description": "Whether to condition on the absence of monomorphic sites. BEAST spells this input non-polymorphic, which is not a legal identifier here."
+          },
+          {
+            "name": "mutationOnlyAtRoot",
+            "type": "Boolean",
+            "required": false,
+            "default": false,
+            "description": "Emulate RoyChoudhury et al. (2008), where mutations occur only in the ancestral population."
+          },
+          {
+            "name": "dominant",
+            "type": "Boolean",
+            "required": false,
+            "default": false,
+            "description": "Whether alleles are dominant."
           }
         ]
       }

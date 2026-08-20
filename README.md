@@ -98,10 +98,24 @@ choice that cannot validate. With nothing loaded, all of them show.
 The observed statement is typed from the likelihood, so it reads `Alignment<Character>` rather than
 `Alignment`, and `PhyloBM` would read `Alignment<Real>`.
 
-One limitation runs the other way: `fromNexus` and `fromFasta` always produce `Alignment<Character>`
-whatever the file says, so a likelihood cannot ask for the *kind* of discrete data it needs. SNAPP
-wants biallelic SNPs and has to settle for `Alignment<Character>`; declaring it over an
-`Alignment<Binary>` makes it unobservable from any loader PhyloSpec has.
+The SNAPP entry in the sample library is taken from SNAPP's own inputs rather than guessed:
+`mutationRateU`, `mutationRateV`, and `theta` **or** `coalescenceRate` — which are `XOR` inputs in
+BEAST, so they are two signatures here, told apart on the way back in by which of the two the call
+names. Its engine-only inputs, the ascertainment counts and the diagnostics, are left out. One name
+had to change: BEAST spells an input `non-polymorphic`, which is not a legal identifier, and that is
+worth remembering when libraries start being generated from package sources.
+
+Two limitations run the other way.
+
+`fromNexus` and `fromFasta` always produce `Alignment<Character>` whatever the file says, so a
+likelihood cannot ask for the *kind* of discrete data it needs. SNAPP wants biallelic SNPs and has
+to settle for `Alignment<Character>`; declaring it over an `Alignment<Binary>` makes it unobservable
+from any loader PhyloSpec has.
+
+And SNAPP's `theta` is one value per node — `Vector<PositiveReal; num=tree.numNodes>` — which is a
+length no fixed number can express, so it gets the four-element fallback and the resolver accepts
+it. That is the same gap as the vector lengths above, seen from the other side: an advisory length
+lets a wrong-length vector through.
 
 ## Engine component libraries
 
