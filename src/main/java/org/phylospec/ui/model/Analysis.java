@@ -1,6 +1,7 @@
 package org.phylospec.ui.model;
 
 import java.util.List;
+import java.util.Map;
 
 import javafx.beans.property.SimpleStringProperty;
 import javafx.beans.property.StringProperty;
@@ -13,9 +14,9 @@ import org.phylospec.ui.spec.Library;
 /**
  * The whole analysis being built: the data, the four model choices, and the run settings.
  *
- * <p>Which components each tab offers is declared here rather than discovered from the library,
- * because a tab is a curated choice — "these are the substitution models" — not simply
- * "everything that returns a QMatrix".
+ * <p>What each tab offers is discovered from the library by role, so an engine library's
+ * components appear without being named here. The lists below only fix the order the familiar
+ * ones come in, so that a BEAUti user still finds HKY at the top.
  */
 public final class Analysis {
 
@@ -25,6 +26,12 @@ public final class Analysis {
     public static final List<String> CLOCK_MODELS = List.of("StrictClock", "RelaxedClock");
     public static final List<String> TREE_PRIORS =
             List.of("Yule", "BirthDeath", "Coalescent", "SkylineCoalescent", "FossilizedBirthDeath");
+
+    private static final Map<String, List<String>> PREFERRED = Map.of(
+            Library.SUBSTITUTION_MODEL, SUBSTITUTION_MODELS,
+            Library.SITE_RATES, SITE_RATE_MODELS,
+            Library.CLOCK_MODEL, CLOCK_MODELS,
+            Library.TREE_PRIOR, TREE_PRIORS);
 
     private final Library library;
 
@@ -90,9 +97,9 @@ public final class Analysis {
         return partitions.stream().anyMatch(partition -> name.equals(partition.name()));
     }
 
-    /** Generators offered by a tab, in the declared order. */
-    public List<Generator> choicesFor(List<String> names) {
-        return library.lookup(names);
+    /** Everything the library offers for a tab, the familiar ones first. */
+    public List<Generator> choicesFor(String role) {
+        return library.withRole(role, PREFERRED.getOrDefault(role, List.of()));
     }
 
     /**

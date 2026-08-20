@@ -4,6 +4,7 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 
 import javafx.animation.Animation;
@@ -56,6 +57,10 @@ public class PhyloSpecUI extends Application {
     /** How often the preview is regenerated. Cheap enough to poll, and it cannot miss an edit. */
     private static final Duration REFRESH = Duration.millis(300);
 
+    /** Names an extra component library to load beside core. */
+    private static final String LIBRARY_FLAG = "--library";
+
+    private CommandLine commandLine;
     private Analysis analysis;
     private TextArea script;
     private Label status;
@@ -67,7 +72,8 @@ public class PhyloSpecUI extends Application {
 
     @Override
     public void start(Stage stage) {
-        analysis = new Analysis(Library.load());
+        commandLine = CommandLine.parse(getParameters().getRaw());
+        analysis = new Analysis(Library.load(commandLine.libraries()));
         loadAlignmentsNamedOnTheCommandLine();
 
         TabPane tabs = buildTabs();
@@ -98,9 +104,32 @@ public class PhyloSpecUI extends Application {
 
     /** Alignments can be named on the command line, the way BEAUti accepts them. */
     private void loadAlignmentsNamedOnTheCommandLine() {
-        for (String argument : getParameters().getRaw()) {
+        for (String argument : commandLine.alignments()) {
             Path path = Path.of(argument);
             if (Files.isRegularFile(path)) analysis.addPartition(path);
+        }
+    }
+
+    /**
+     * What the command line asked for: engine component libraries, given as {@code --library <file>}
+     * or {@code --library=<file>}, and alignments, given bare.
+     */
+    private record CommandLine(List<Path> libraries, List<String> alignments) {
+
+        static CommandLine parse(List<String> raw) {
+            List<Path> libraries = new ArrayList<>();
+            List<String> alignments = new ArrayList<>();
+            for (int i = 0; i < raw.size(); i++) {
+                String argument = raw.get(i);
+                if (argument.startsWith(LIBRARY_FLAG + "=")) {
+                    libraries.add(Path.of(argument.substring(LIBRARY_FLAG.length() + 1)));
+                } else if (argument.equals(LIBRARY_FLAG) && i + 1 < raw.size()) {
+                    libraries.add(Path.of(raw.get(++i)));
+                } else if (!argument.startsWith("--")) {
+                    alignments.add(argument);
+                }
+            }
+            return new CommandLine(libraries, alignments);
         }
     }
 
@@ -117,17 +146,17 @@ public class PhyloSpecUI extends Application {
                         "The substitution process, shared by every partition.",
                         List.of(
                                 ComponentPanel.Choice.of("Substitution model",
-                                        Analysis.SUBSTITUTION_MODELS, analysis.substitutionModel()),
+                                        Library.SUBSTITUTION_MODEL, analysis.substitutionModel()),
                                 new ComponentPanel.Choice("Site rates",
-                                        Analysis.SITE_RATE_MODELS, analysis.siteRates(), true)))),
+                                        Library.SITE_RATES, analysis.siteRates(), true)))),
                 tab("Clock Model", ComponentPanel.build(analysis,
                         "How substitution rates vary along the branches of the tree.",
                         List.of(ComponentPanel.Choice.of("Clock model",
-                                Analysis.CLOCK_MODELS, analysis.clockModel())))),
+                                Library.CLOCK_MODEL, analysis.clockModel())))),
                 tab("Tree Prior", ComponentPanel.build(analysis,
                         "The process assumed to have generated the tree.",
                         List.of(ComponentPanel.Choice.of("Tree prior",
-                                Analysis.TREE_PRIORS, analysis.treePrior())))),
+                                Library.TREE_PRIOR, analysis.treePrior())))),
                 tab("Priors", PriorsPanel.build(analysis, priorsHost)),
                 tab("MCMC", McmcPanel.build(analysis)));
 

@@ -11,8 +11,9 @@ checked by the reference PhyloSpec parser and type resolver as you build it.
 
 ```sh
 mvn package
-bin/phylospec-ui                            # empty analysis
-bin/phylospec-ui examples/Primates.nex      # with an alignment already loaded
+bin/phylospec-ui                                   # empty analysis
+bin/phylospec-ui examples/Primates.nex             # with an alignment already loaded
+bin/phylospec-ui --library libraries/beast28.json  # with an engine's components as well
 ```
 
 `examples/` holds the familiar BEAST 2.8 datasets — Primates, anolis, Flu, Dengue4, RSV2, dna and
@@ -63,15 +64,69 @@ Two choices keep this much smaller than BEAUti:
   `ParamRow` renders all of them, and the same widget serves priors, distribution-valued arguments
   (a relaxed clock's `base`) and function-valued arguments (a coalescent's `PopulationFunction`).
 - **One component panel.** Site Model, Clock Model and Tree Prior are the same screen — pick a
-  component, edit its arguments — so they share `ComponentPanel` and differ only in the list of
-  generators they offer.
+  component, edit its arguments — so they share `ComponentPanel` and differ only in the role of the
+  components they offer.
 
-Everything the UI knows about components comes from `phylospec-core-component-library.json`, read
-through `phylospec-core`. Adding a generator to that library makes it available here with no UI
-code; only the curated per-tab lists in `Analysis` name components explicitly.
+Everything the UI knows about components comes from the component libraries, read through
+`phylospec-core`. Adding a generator to a library makes it available here with no UI code.
 
 Structural arguments — `tree`, `taxa`, `numSites`, `qMatrix`, `siteRates`, `branchRates` — are
 supplied by `ScriptWriter` from the shape of the analysis rather than being asked of the user.
+
+## Engine component libraries
+
+An engine implements some of PhyloSpec and adds components of its own, so `--library` loads one or
+more further component libraries beside core. Nothing else changes: they are ordinary
+component-library JSON, registered after core so they can refer to core types, and their namespaces
+are imported so the parser resolves their names.
+
+`libraries/beast28.json` is a hand-written sample covering two BEAST 2.8 packages — BICEPS
+(`BICEPS`, `YuleSkyline`) and bModelTest. **No UI code names any of them.** A component reaches a
+tab by the role it fills:
+
+| Role | Filled by | Tab |
+|---|---|---|
+| `substitutionModel` | a function returning `QMatrix` | Site Model |
+| `siteRates` | a distribution over a vector of rates, with no tree | Site Model |
+| `clockModel` | a distribution over a vector of rates, given a tree | Clock Model |
+| `treePrior` | a distribution over a `Tree` | Tree Prior |
+| `treeLikelihood` | a distribution over an `Alignment` | not yet a tab — see below |
+| `populationFunction` | a function returning `PopulationFunction` | nested argument |
+
+A library may state a component's role outright with a `role` field, which is how one that no rule
+would recognise still lands in the right place. Core states none, so its components are sorted by
+what they produce. The one pairing inference has to be careful about is the clock and the site
+rates: both generate `Distribution<Vector<Rate>>`, and only the `tree` argument tells them apart.
+
+The per-tab lists in `Analysis` no longer decide what is offered — they only fix the order the
+familiar components come in, so a BEAUti user still finds HKY at the top and anything new below it.
+
+`role` is not in the component-library schema yet; it survives loading as an additional property. It
+would be worth adding, along with a way for an engine to declare *which core components it
+implements*, since an engine that cannot run half of core should not offer it.
+
+### bModelTest
+
+Worth noting how it decomposes, because it is not what it looks like. bModelTest is not a
+distribution over rate matrices — the matrix stays deterministic and the *model indicator* is what
+gets sampled:
+
+```
+BModelSet modelSet = bModelSet(name="transitionTransversionSplit");
+Integer modelIndicator ~ DiscreteUniform(lower=0, upper=size(modelSet) - 1);
+QMatrix qMatrix = nucleotideModel(modelSet=modelSet, modelIndicator=modelIndicator, ...);
+```
+
+which is how LPhy models it, and is the more faithful reading: the reversible-jump move is an
+operator on the indicator, not a distribution. The indicator's trace is what a bModelTest analysis
+is *for*, so hiding it inside a `~` on `qMatrix` would lose the result.
+
+The Site Model tab offers `nucleotideModel` today and writes the `bModelSet(...)` call nested inside
+it, with the indicator as a literal. Sampling the indicator needs three things the tabs cannot yet
+express: a **named intermediate** (`modelSet` is used twice, and the UI only ever inlines a nested
+call), a **prior whose hyperparameters are expressions** over another node, and an **"average over"
+tick** alongside "estimate" — the Bernoulli switches that turn gamma rates and invariable sites on
+and off are exactly BEAUti's checkboxes promoted to random variables.
 
 ## Opening a script
 
@@ -94,7 +149,9 @@ the engine reads the files for real.
 `Validator` runs the real `Lexer`, `Parser` and `TypeResolver` over the generated script and reports
 the first problem in the status bar. `ScriptWriterTest` generates every model the tabs can express —
 360 generator combinations, 89 estimate ticks, 149 prior choices and every optional argument dropped
-— and asserts that all of them parse and type-check.
+— and asserts that all of them parse and type-check. `EngineLibraryTest` does the same for
+`libraries/beast28.json`, and asserts on what the tabs *offer* rather than on the library's
+contents, since the claim being tested is that no UI code names its components.
 
 `ScriptReaderTest` puts the same space through `write → read → write` and asserts the two scripts are
 identical. A fix point on the script is the property that matters: an `Analysis` has no equality of

@@ -26,10 +26,10 @@ import org.phylospec.ui.spec.Library;
 public final class ComponentPanel {
 
     /** One chooser within a panel — the Site Model tab has two, for substitution and rates. */
-    public record Choice(String label, List<String> generators, Component component, boolean optional) {
+    public record Choice(String label, String role, Component component, boolean optional) {
 
-        public static Choice of(String label, List<String> generators, Component component) {
-            return new Choice(label, generators, component, false);
+        public static Choice of(String label, String role, Component component) {
+            return new Choice(label, role, component, false);
         }
     }
 
@@ -47,7 +47,7 @@ public final class ComponentPanel {
 
     private static Node section(Analysis analysis, Choice choice) {
         Library library = analysis.library();
-        List<Generator> candidates = analysis.choicesFor(choice.generators());
+        List<Generator> candidates = analysis.choicesFor(choice.role());
 
         ComboBox<Generator> combo = new ComboBox<>();
         combo.getItems().setAll(candidates);
