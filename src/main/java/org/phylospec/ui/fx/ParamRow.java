@@ -46,7 +46,8 @@ public final class ParamRow {
             trailing.getChildren().add(use);
         }
         if (param.estimable()) {
-            CheckBox estimate = new CheckBox("estimate");
+            // An indicator is not measured, it is summed over, so the tick says so.
+            CheckBox estimate = new CheckBox(param.isIndicator() ? "average over" : "estimate");
             estimate.selectedProperty().bindBidirectional(param.estimateProperty());
             trailing.getChildren().add(estimate);
         }

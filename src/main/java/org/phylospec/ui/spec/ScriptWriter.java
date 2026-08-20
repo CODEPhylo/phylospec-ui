@@ -52,9 +52,47 @@ public final class ScriptWriter {
         used.add(analysis.treeNameProperty().get());
         used.addAll(RESERVED);
         analysis.partitions().forEach(partition -> used.add(partition.name()));
+        for (Param param : hoisted()) {
+            param.variableProperty().set(unique(param.name()));
+        }
         for (Param param : analysis.estimatedParams()) {
             param.variableProperty().set(unique(param.name()));
         }
+    }
+
+    /**
+     * Function-valued arguments across the analysis, innermost first.
+     *
+     * <p>Each becomes a statement of its own rather than a call nested inside the one that uses it,
+     * so that it has a name — a population function or a bModelTest model set may be referred to
+     * from more than one place, and an inlined call cannot be.
+     */
+    private List<Param> hoisted() {
+        List<Param> found = new ArrayList<>();
+        for (Component component : List.of(analysis.substitutionModel(), analysis.siteRates(),
+                analysis.clockModel(), analysis.treePrior())) {
+            collectHoisted(component, found);
+        }
+        return found;
+    }
+
+    private static void collectHoisted(Component component, List<Param> into) {
+        for (Param param : component.params()) {
+            if (!param.includeProperty().get() || param.isEstimated()) continue;
+            Component nested = param.priorProperty().get();
+            if (nested == null || !isFunctionValued(param)) continue;
+            collectHoisted(nested, into);
+            into.add(param);
+        }
+    }
+
+    /**
+     * True for an argument built by calling a function, as opposed to one drawn from a distribution.
+     * A distribution stays where it is written — {@code RelaxedClock(base=LogNormal(...))} has no
+     * spelling as a statement.
+     */
+    private static boolean isFunctionValued(Param param) {
+        return param.isComponentValued() && !param.isDistributionValued();
     }
 
     private String unique(String preferred) {
@@ -105,24 +143,24 @@ public final class ScriptWriter {
         List<String> statements = new ArrayList<>();
         String tree = analysis.treeNameProperty().get();
 
-        priorStatements(analysis.substitutionModel(), statements);
+        declarations(analysis.substitutionModel(), statements);
         statements.add(assignment("QMatrix qMatrix = ", analysis.substitutionModel()));
 
         boolean hasSiteRates = analysis.siteRates().generator() != null;
         if (hasSiteRates) {
             statements.add("");
-            priorStatements(analysis.siteRates(), statements);
+            declarations(analysis.siteRates(), statements);
             statements.add(draw("siteRates", analysis.siteRates()));
         }
 
         statements.add("");
-        priorStatements(analysis.treePrior(), statements);
+        declarations(analysis.treePrior(), statements);
         statements.add(draw(tree, analysis.treePrior()));
 
         boolean hasClock = analysis.clockModel().generator() != null;
         if (hasClock) {
             statements.add("");
-            priorStatements(analysis.clockModel(), statements);
+            declarations(analysis.clockModel(), statements);
             statements.add(draw("branchRates", analysis.clockModel()));
         }
 
@@ -134,16 +172,21 @@ public final class ScriptWriter {
     }
 
     /**
-     * Emits `Type name ~ Distribution(...)` for each estimated param of a component, descending into
-     * nested functions first so their parameters are declared before the call that uses them.
+     * Emits everything a component's statement refers to: `Type name ~ Distribution(...)` for each
+     * estimated param, and `Type name = function(...)` for each function-valued one. Nested
+     * components are descended into first, so a name is always declared before it is used.
      */
-    private void priorStatements(Component component, List<String> statements) {
+    private void declarations(Component component, List<String> statements) {
         for (Param param : component.params()) {
             // An argument left out of the call would leave its prior declared but unused.
             if (!param.includeProperty().get()) continue;
             Component nested = param.priorProperty().get();
             if (nested != null && !param.isEstimated()) {
-                priorStatements(nested, statements);
+                declarations(nested, statements);
+                if (isFunctionValued(param) && nested.generator() != null) {
+                    statements.add(call(declared(param.type()) + " "
+                            + param.variableProperty().get() + " = ", nested.name(), argsOf(nested)));
+                }
                 continue;
             }
             if (!param.isEstimated()) continue;
@@ -227,6 +270,7 @@ public final class ScriptWriter {
         if (param.isComponentValued()) {
             Component nested = param.priorProperty().get();
             if (nested == null || nested.generator() == null) return "/* choose a " + param.type() + " */";
+            if (isFunctionValued(param)) return param.variableProperty().get();
             return nested.name() + "(" + String.join(", ", argsOf(nested)) + ")";
         }
         String value = param.valueProperty().get();

@@ -2,6 +2,7 @@ package org.phylospec.ui;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
@@ -19,6 +20,7 @@ import org.phylospec.ui.model.Component;
 import org.phylospec.ui.model.Param;
 import org.phylospec.ui.model.Partition;
 import org.phylospec.ui.spec.Library;
+import org.phylospec.ui.spec.ScriptReader;
 import org.phylospec.ui.spec.ScriptWriter;
 import org.phylospec.ui.spec.Validator;
 
@@ -123,16 +125,64 @@ class EngineLibraryTest {
         assertEquals(Analysis.TREE_PRIORS, offered.subList(0, Analysis.TREE_PRIORS.size()));
     }
 
-    /** A component may declare its own role, which is how one no rule would recognise still lands. */
+    /**
+     * Engine components land on the right tab with nothing declared: what a component produces is
+     * already what decides where it belongs, and no component of this library says otherwise.
+     */
     @Test
-    void aDeclaredRoleIsHonoured() {
+    void engineComponentsArePlacedByWhatTheyProduce() {
         Analysis analysis = analysisWithData(withBeast);
         assertTrue(names(analysis, Library.SITE_RATES).contains("bSiteRates"));
         assertTrue(names(analysis, Library.SUBSTITUTION_MODEL).contains("nucleotideModel"));
 
+        for (String name : List.of("BICEPS", "YuleSkyline", "nucleotideModel", "bSiteRates")) {
+            Generator generator = withBeast.overloads(name).get(0);
+            assertEquals(null, generator.getAdditionalProperties().get("role"),
+                    name + " declares a role that its generated type already says");
+        }
+
         // A function that fills no tab is still loaded, for use as a nested argument.
         assertEquals(1, withBeast.overloads("bModelSet").size());
         assertEquals(null, withBeast.roleOf(withBeast.overloads("bModelSet").get(0)));
+    }
+
+    /**
+     * The one thing a generated type cannot say is that a component fills a slot the UI does not
+     * have yet. StarBEAST's gene trees are the case in point: a gene tree is drawn from a
+     * distribution over a Tree like any other, but it does not belong on the Tree Prior tab.
+     */
+    @Test
+    void aDeclaredRoleOverridesWhatTheTypeWouldSay(@TempDir Path scratch) throws IOException {
+        Path library = scratch.resolve("starbeast.json");
+        Files.writeString(library, """
+                {"componentLibrary": {
+                  "name": "role override", "version": "0.1.0",
+                  "engine": "BEAST", "engineVersion": "2.8.0",
+                  "description": "One generator that asks not to be a tree prior.",
+                  "types": [],
+                  "generators": [{
+                    "name": "MultispeciesCoalescent",
+                    "namespace": "beast.evolution.speciation",
+                    "description": "A gene tree within a species tree.",
+                    "generatedType": "Distribution<Tree<;numTaxa=taxa.num>>",
+                    "role": "geneTreePrior",
+                    "arguments": [
+                      {"name": "speciesTree", "type": "Tree", "required": true,
+                       "description": "The species tree."},
+                      {"name": "populationSizes", "type": "Vector<PositiveReal>", "required": true,
+                       "description": "Population size per species-tree branch."},
+                      {"name": "taxa", "type": "Taxa", "required": true,
+                       "description": "The taxa of the gene tree."}
+                    ]}]}}
+                """);
+
+        Library loaded = Library.load(List.of(library));
+        Generator geneTree = loaded.overloads("MultispeciesCoalescent").get(0);
+
+        assertEquals("geneTreePrior", loaded.roleOf(geneTree));
+        assertFalse(loaded.withRole(Library.TREE_PRIOR, List.of()).contains(geneTree),
+                "a declared role must keep it off the Tree Prior tab");
+        assertEquals(List.of(geneTree), loaded.withRole("geneTreePrior", List.of()));
     }
 
     /**
@@ -152,22 +202,99 @@ class EngineLibraryTest {
     }
 
     /**
-     * bModelTest keeps the rate matrix deterministic and samples a model indicator instead, so the
-     * Site Model tab has to be able to write a call with a nested function in it.
+     * bModelTest keeps the rate matrix deterministic and samples a model indicator instead. The
+     * model set is a function-valued argument, so it becomes a statement of its own rather than a
+     * call nested inside the one that uses it.
      */
     @Test
     void bModelTestRateMatrixProducesAValidScript() {
+        String script = ScriptWriter.write(bModelTestAnalysis());
+        assertTrue(script.contains("BModelSet modelSet = bModelSet(name=\"transitionTransversionSplit\")"),
+                script);
+        assertTrue(script.contains("modelSet=modelSet"), script);
+        assertEquals(List.of(), Validator.validate(withBeast, script), script);
+    }
+
+    /**
+     * The indicator is what a bModelTest run is for, so it has to be samplable even though it is an
+     * integer, and its prior has to be able to reach the model set — which is the whole reason the
+     * model set needed a name.
+     */
+    @Test
+    void averagingOverModelsProducesAValidScript() {
+        Analysis analysis = bModelTestAnalysis();
+        Param indicator = analysis.substitutionModel().param("modelIndicator");
+
+        assertTrue(indicator.estimable(), "a model indicator must be samplable");
+        assertTrue(indicator.isIndicator(), "and must say that it is averaged over, not estimated");
+
+        indicator.estimateProperty().set(true);
+        Component prior = indicator.priorProperty().get();
+        assertEquals("DiscreteUniform", prior.name());
+        prior.param("lower").valueProperty().set("0");
+        prior.param("upper").valueProperty().set("size(modelSet) - 1");
+
+        String script = ScriptWriter.write(analysis);
+        assertTrue(script.contains("Integer modelIndicator ~ DiscreteUniform("), script);
+        assertTrue(script.contains("upper=size(modelSet) - 1"), script);
+        assertEquals(List.of(), Validator.validate(withBeast, script), script);
+    }
+
+    /** The script survives a trip back onto the tabs, intermediate, indicator and all. */
+    @Test
+    void bModelTestScriptRoundTrips() {
+        Analysis analysis = bModelTestAnalysis();
+        Param indicator = analysis.substitutionModel().param("modelIndicator");
+        indicator.estimateProperty().set(true);
+        indicator.priorProperty().get().param("lower").valueProperty().set("0");
+        indicator.priorProperty().get().param("upper").valueProperty().set("size(modelSet) - 1");
+
+        String written = ScriptWriter.write(analysis);
+        assertEquals(written, ScriptWriter.write(ScriptReader.read(withBeast, written)));
+    }
+
+    /** A named intermediate nothing refers to has nowhere to live on the tabs, so it is refused. */
+    @Test
+    void anUnusedIntermediateIsRefused() {
+        Analysis analysis = bModelTestAnalysis();
+        String written = ScriptWriter.write(analysis).replace(
+                "BModelSet modelSet = bModelSet",
+                "BModelSet spare = bModelSet(name=\"namedSimple\")\n    BModelSet modelSet = bModelSet");
+
+        ScriptReader.Unsupported refusal = assertThrows(ScriptReader.Unsupported.class,
+                () -> ScriptReader.read(withBeast, written));
+        assertTrue(refusal.getMessage().contains("spare"), refusal.getMessage());
+    }
+
+    /**
+     * The site-rate half of bModelTest. Its two switches stay literal: BEAUti would draw them as
+     * checkboxes, and bModelTest samples them, but core has no distribution over Boolean for the
+     * `~` statement to use — so "average over" has nothing to offer them yet.
+     */
+    @Test
+    void bModelTestSiteRatesProduceAValidScript() {
+        Analysis analysis = analysisWithData(withBeast);
+        Component rates = analysis.siteRates();
+        rates.generatorProperty().set(withBeast.overloads("bSiteRates").get(0));
+        rates.param("numCategories").valueProperty().set("4");
+
+        assertEquals(List.of(), withBeast.priorsFor("Boolean"), "core gained a Boolean distribution");
+        assertFalse(rates.param("useShape").estimable());
+
+        String script = ScriptWriter.write(analysis);
+        assertTrue(script.contains("Vector<Rate> siteRates ~ bSiteRates("), script);
+        assertTrue(script.contains("numSites=numSites(primates)"), script);
+        assertEquals(List.of(), Validator.validate(withBeast, script), script);
+    }
+
+    private static Analysis bModelTestAnalysis() {
         Analysis analysis = analysisWithData(withBeast);
         Component substitution = analysis.substitutionModel();
         substitution.generatorProperty().set(withBeast.overloads("nucleotideModel").get(0));
 
-        Param modelSet = substitution.param("modelSet");
-        modelSet.priorProperty().get().param("name").valueProperty().set("transitionTransversionSplit");
+        substitution.param("modelSet").priorProperty().get()
+                .param("name").valueProperty().set("transitionTransversionSplit");
         substitution.param("rates").valueProperty().set("[0.1, 0.3, 0.1, 0.1, 0.3, 0.1]");
-
-        String script = ScriptWriter.write(analysis);
-        assertTrue(script.contains("QMatrix qMatrix = nucleotideModel("), script);
-        assertTrue(script.contains("bModelSet(name=\"transitionTransversionSplit\")"), script);
-        assertEquals(List.of(), Validator.validate(withBeast, script), script);
+        return analysis;
     }
 }

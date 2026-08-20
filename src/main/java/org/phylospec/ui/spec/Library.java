@@ -30,8 +30,9 @@ import org.phylospec.typeresolver.TypeResolver;
 public final class Library {
 
     /**
-     * The slots a BEAUti-shaped UI has to fill. A component says which one it belongs in with a
-     * {@code role} field; core says nothing, and is sorted by {@link #inferRole}.
+     * The slots a BEAUti-shaped UI has to fill. Which one a component belongs in is read off what it
+     * produces — {@code QMatrix} and {@code Distribution<Tree>} say it on their own — so a library
+     * declares nothing. See {@link #roleOf} for the one thing a type cannot say.
      */
     public static final String SUBSTITUTION_MODEL = "substitutionModel";
     public static final String SITE_RATES = "siteRates";
@@ -144,9 +145,13 @@ public final class Library {
     /**
      * Which slot of the UI a generator belongs in, or null if it fills none.
      *
-     * <p>A library can say outright with a {@code role} field, which is how an engine component
-     * that no rule would recognise still lands on the right tab. Core declares nothing, so its
-     * components are sorted by what they produce.
+     * <p>Normally this is what the generator produces, restated: only a substitution model returns
+     * a {@code QMatrix}, only a tree prior is a distribution over a {@code Tree}. Declaring a role
+     * for those could only ever agree with the type or contradict it.
+     *
+     * <p>What a type cannot say is that a component fills a slot that does not exist yet — a
+     * StarBEAST gene tree is a {@code Distribution<Tree>} and still does not belong on the Tree
+     * Prior tab. A {@code role} field says so, and wins over what the type implies.
      */
     public String roleOf(Generator generator) {
         Object declared = generator.getAdditionalProperties().get("role");
@@ -154,6 +159,11 @@ public final class Library {
         return inferRole(generator);
     }
 
+    /**
+     * The slot a generator's own type puts it in. Every component in core and in the sample BEAST
+     * library is placed by this alone; the one pair it has to work for is the clock and the site
+     * rates, which generate the same type.
+     */
     private String inferRole(Generator generator) {
         String generated = generator.getGeneratedType();
         String produced = head(generated);
@@ -202,6 +212,7 @@ public final class Library {
             case "Simplex" -> "Dirichlet";
             case "NonNegativeReal", "Age" -> "Exponential";
             case "Real" -> "Normal";
+            case "Integer", "NonNegativeInteger", "PositiveInteger", "Count" -> "DiscreteUniform";
             default -> null;
         };
         return candidates.stream()

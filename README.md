@@ -81,8 +81,8 @@ component-library JSON, registered after core so they can refer to core types, a
 are imported so the parser resolves their names.
 
 `libraries/beast28.json` is a hand-written sample covering two BEAST 2.8 packages — BICEPS
-(`BICEPS`, `YuleSkyline`) and bModelTest. **No UI code names any of them.** A component reaches a
-tab by the role it fills:
+(`BICEPS`, `YuleSkyline`) and bModelTest. **No UI code names any of them, and the library declares
+no roles.** A component reaches a tab by what it produces:
 
 | Role | Filled by | Tab |
 |---|---|---|
@@ -93,17 +93,36 @@ tab by the role it fills:
 | `treeLikelihood` | a distribution over an `Alignment` | not yet a tab — see below |
 | `populationFunction` | a function returning `PopulationFunction` | nested argument |
 
-A library may state a component's role outright with a `role` field, which is how one that no rule
-would recognise still lands in the right place. Core states none, so its components are sorted by
-what they produce. The one pairing inference has to be careful about is the clock and the site
-rates: both generate `Distribution<Vector<Rate>>`, and only the `tree` argument tells them apart.
+For most of these the role is the generated type restated: only a substitution model returns a
+`QMatrix`, only a tree prior is a distribution over a `Tree`. The one pair inference has to work for
+is the clock and the site rates, which generate the same `Distribution<Vector<Rate>>` and are told
+apart by whether the component takes a tree.
 
-The per-tab lists in `Analysis` no longer decide what is offered — they only fix the order the
-familiar components come in, so a BEAUti user still finds HKY at the top and anything new below it.
+A component may still declare a `role` outright, and it wins. That is not for restating a type —
+doing so could only agree with it or contradict it — but for the one thing a type cannot say: that a
+component fills a slot the UI does not have yet. A StarBEAST gene tree is a `Distribution<Tree>` and
+still does not belong on the Tree Prior tab.
 
 `role` is not in the component-library schema yet; it survives loading as an additional property. It
 would be worth adding, along with a way for an engine to declare *which core components it
 implements*, since an engine that cannot run half of core should not offer it.
+
+### Named intermediates
+
+An argument built by calling a function — a coalescent's `PopulationFunction`, a bModelTest model
+set — becomes a statement of its own rather than a call nested inside the one that uses it:
+
+```
+PopulationFunction populationSize = constantPopulationFunction(populationSize=theta)
+Tree tree ~ Coalescent(populationSize=populationSize, taxa=taxa(primates))
+```
+
+It needs a name because it may be referred to from more than one place, and an inlined call cannot
+be. `ScriptReader` reads them back by collecting the model block's assignments first, so a forward
+reference works; one that nothing refers to is refused, since the tabs have nowhere to keep it.
+
+A distribution-valued argument is left where it is written — `RelaxedClock(base=LogNormal(...))` has
+no spelling as a statement.
 
 ### bModelTest
 
@@ -112,28 +131,32 @@ distribution over rate matrices — the matrix stays deterministic and the *mode
 gets sampled:
 
 ```
-BModelSet modelSet = bModelSet(name="transitionTransversionSplit");
-Integer modelIndicator ~ DiscreteUniform(lower=0, upper=size(modelSet) - 1);
-QMatrix qMatrix = nucleotideModel(modelSet=modelSet, modelIndicator=modelIndicator, ...);
+BModelSet modelSet = bModelSet(name="transitionTransversionSplit")
+Integer modelIndicator ~ DiscreteUniform(lower=0, upper=size(modelSet) - 1)
+QMatrix qMatrix = nucleotideModel(modelSet=modelSet, modelIndicator=modelIndicator, ...)
 ```
 
 which is how LPhy models it, and is the more faithful reading: the reversible-jump move is an
 operator on the indicator, not a distribution. The indicator's trace is what a bModelTest analysis
 is *for*, so hiding it inside a `~` on `qMatrix` would lose the result.
 
-The Site Model tab offers `nucleotideModel` today and writes the `bModelSet(...)` call nested inside
-it, with the indicator as a literal. Sampling the indicator needs three things the tabs cannot yet
-express: a **named intermediate** (`modelSet` is used twice, and the UI only ever inlines a nested
-call), a **prior whose hyperparameters are expressions** over another node, and an **"average over"
-tick** alongside "estimate" — the Bernoulli switches that turn gamma rates and invariable sites on
-and off are exactly BEAUti's checkboxes promoted to random variables.
+An indicator is not measured, it is summed over, so its tick reads **average over** rather than
+**estimate**. Nothing about an integer argument's type says which it is — a gamma category count is
+chosen, not inferred — so a library marks one with the `indicator` widget in its `uiHints`.
+
+The half of bModelTest that does *not* work yet is the site-model switches. `bSiteRates` takes
+`useShape` and `useProportionInvariable`, which BEAUti would draw as checkboxes and bModelTest
+samples from a Bernoulli. Core's `Bernoulli` generates a `NonNegativeInteger`, not a `Boolean`, and
+nothing in core generates a `Distribution<Boolean>` — so those two switches can only be literals
+here. That is a gap in core rather than in the UI.
 
 ## Opening a script
 
 `File > Open…` reads a `.phylospec` script back onto the tabs. `ScriptReader` is the inverse of
 `ScriptWriter`: it recognises the script by the names the writer gives its structural variables —
-`qMatrix`, `siteRates`, `branchRates` — and by the declared type of the tree, and treats everything
-else drawn in the `model` block as a prior on an estimated value.
+`qMatrix`, `siteRates`, `branchRates` — and by the declared type of the tree. Everything else drawn
+in the `model` block is a prior on an estimated value, and everything else assigned is a named
+intermediate, read as part of the argument that refers to it.
 
 The tabs express a subset of PhyloSpec, so not every valid script can be represented. A script that
 falls outside it is **refused outright** rather than partly loaded: a half-loaded analysis looks
@@ -151,7 +174,9 @@ the first problem in the status bar. `ScriptWriterTest` generates every model th
 360 generator combinations, 89 estimate ticks, 149 prior choices and every optional argument dropped
 — and asserts that all of them parse and type-check. `EngineLibraryTest` does the same for
 `libraries/beast28.json`, and asserts on what the tabs *offer* rather than on the library's
-contents, since the claim being tested is that no UI code names its components.
+contents, since the claim being tested is that no UI code names its components. It also puts the
+full bModelTest shape — named intermediate, sampled indicator, an argument holding an expression —
+through the same `write → read → write` fixpoint.
 
 `ScriptReaderTest` puts the same space through `write → read → write` and asserts the two scripts are
 identical. A fix point on the script is the property that matters: an `Analysis` has no equality of

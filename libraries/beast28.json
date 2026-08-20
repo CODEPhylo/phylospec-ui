@@ -5,7 +5,9 @@
     "engine": "BEAST",
     "engineVersion": "2.8.0",
     "description": "A hand-written sample of BEAST 2.8 package components, to exercise loading an engine library beside PhyloSpec core. Covers the BICEPS package (BICEPS, YuleSkyline) and the bModelTest package.",
-    "authors": ["PhyloSpec UI"],
+    "authors": [
+      "PhyloSpec UI"
+    ],
     "license": "MIT",
     "types": [
       {
@@ -21,19 +23,52 @@
         "description": "Bayesian Integrated Coalescent Epoch PlotS: a skyline plot that integrates out population sizes under an inverse gamma prior.",
         "generatedType": "Distribution<Tree<;numTaxa=taxa.num>>",
         "arguments": [
-          {"name": "populationShape", "type": "PositiveReal", "required": true,
-           "description": "Shape of the inverse gamma prior on population sizes."},
-          {"name": "populationMean", "type": "PositiveReal", "required": true,
-           "description": "Mean of the inverse gamma prior on population sizes."},
-          {"name": "groupCount", "type": "PositiveInteger", "required": false, "default": 10,
-           "description": "Number of epochs."},
-          {"name": "ploidy", "type": "PositiveReal", "required": false, "default": 2.0,
-           "description": "Copy number for the gene."},
-          {"name": "linkedMean", "type": "Boolean", "required": false, "default": false,
-           "description": "Use populationMean for the first epoch only, taking later means from the previous epoch."},
-          {"name": "equalEpochs", "type": "Boolean", "required": false, "default": false,
-           "description": "Use epochs of equal length rather than epochs based on groups."},
-          {"name": "taxa", "type": "Taxa", "required": true, "description": "The taxa of the tree."}
+          {
+            "name": "populationShape",
+            "type": "PositiveReal",
+            "required": true,
+            "description": "Shape of the inverse gamma prior on population sizes."
+          },
+          {
+            "name": "populationMean",
+            "type": "PositiveReal",
+            "required": true,
+            "description": "Mean of the inverse gamma prior on population sizes."
+          },
+          {
+            "name": "groupCount",
+            "type": "PositiveInteger",
+            "required": false,
+            "default": 10,
+            "description": "Number of epochs."
+          },
+          {
+            "name": "ploidy",
+            "type": "PositiveReal",
+            "required": false,
+            "default": 2.0,
+            "description": "Copy number for the gene."
+          },
+          {
+            "name": "linkedMean",
+            "type": "Boolean",
+            "required": false,
+            "default": false,
+            "description": "Use populationMean for the first epoch only, taking later means from the previous epoch."
+          },
+          {
+            "name": "equalEpochs",
+            "type": "Boolean",
+            "required": false,
+            "default": false,
+            "description": "Use epochs of equal length rather than epochs based on groups."
+          },
+          {
+            "name": "taxa",
+            "type": "Taxa",
+            "required": true,
+            "description": "The taxa of the tree."
+          }
         ]
       },
       {
@@ -42,15 +77,38 @@
         "description": "Skyline version of the Yule tree prior, integrating out birth rates under a gamma prior.",
         "generatedType": "Distribution<Tree<;numTaxa=taxa.num>>",
         "arguments": [
-          {"name": "birthRateShape", "type": "PositiveReal", "required": true,
-           "description": "Shape of the gamma prior on birth rates."},
-          {"name": "birthRateRate", "type": "PositiveReal", "required": true,
-           "description": "Rate of the gamma prior on birth rates."},
-          {"name": "groupCount", "type": "PositiveInteger", "required": false, "default": 10,
-           "description": "Number of epochs."},
-          {"name": "equalEpochs", "type": "Boolean", "required": false, "default": false,
-           "description": "Use epochs of equal length rather than epochs based on groups."},
-          {"name": "taxa", "type": "Taxa", "required": true, "description": "The taxa of the tree."}
+          {
+            "name": "birthRateShape",
+            "type": "PositiveReal",
+            "required": true,
+            "description": "Shape of the gamma prior on birth rates."
+          },
+          {
+            "name": "birthRateRate",
+            "type": "PositiveReal",
+            "required": true,
+            "description": "Rate of the gamma prior on birth rates."
+          },
+          {
+            "name": "groupCount",
+            "type": "PositiveInteger",
+            "required": false,
+            "default": 10,
+            "description": "Number of epochs."
+          },
+          {
+            "name": "equalEpochs",
+            "type": "Boolean",
+            "required": false,
+            "default": false,
+            "description": "Use epochs of equal length rather than epochs based on groups."
+          },
+          {
+            "name": "taxa",
+            "type": "Taxa",
+            "required": true,
+            "description": "The taxa of the tree."
+          }
         ]
       },
       {
@@ -59,8 +117,12 @@
         "description": "The set of nucleotide substitution models named by a bModelTest model set.",
         "generatedType": "BModelSet",
         "arguments": [
-          {"name": "name", "type": "String", "required": true,
-           "description": "One of allreversible, transitionTransversionSplit, namedSimple, namedExtended."}
+          {
+            "name": "name",
+            "type": "String",
+            "required": true,
+            "description": "One of allreversible, transitionTransversionSplit, namedSimple, namedExtended."
+          }
         ]
       },
       {
@@ -69,7 +131,12 @@
         "description": "The number of models in a model set.",
         "generatedType": "PositiveInteger",
         "arguments": [
-          {"name": "modelSet", "type": "BModelSet", "required": true, "description": "The model set."}
+          {
+            "name": "modelSet",
+            "type": "BModelSet",
+            "required": true,
+            "description": "The model set."
+          }
         ]
       },
       {
@@ -77,18 +144,40 @@
         "namespace": "beast.bmodeltest",
         "description": "The rate matrix selected from a model set by a model indicator. bModelTest samples the indicator, so the matrix itself stays deterministic.",
         "generatedType": "QMatrix",
-        "role": "substitutionModel",
         "arguments": [
-          {"name": "modelSet", "type": "BModelSet", "required": true,
-           "description": "The set of models to choose from."},
-          {"name": "modelIndicator", "type": "NonNegativeInteger", "required": true,
-           "description": "Index of the model to use."},
-          {"name": "rates", "type": "Simplex", "required": true,
-           "description": "Relative rates of the GTR process."},
-          {"name": "freq", "type": "Simplex", "required": true,
-           "description": "Base frequencies."},
-          {"name": "meanRate", "type": "Rate", "required": false,
-           "description": "Overall rate of substitution."}
+          {
+            "name": "modelSet",
+            "type": "BModelSet",
+            "required": true,
+            "description": "The set of models to choose from."
+          },
+          {
+            "name": "modelIndicator",
+            "type": "Integer",
+            "required": true,
+            "description": "Index of the model to use. bModelTest samples this, which is what averages over model choice.",
+            "uiHints": {
+              "widget": "indicator"
+            }
+          },
+          {
+            "name": "rates",
+            "type": "Simplex",
+            "required": true,
+            "description": "Relative rates of the GTR process."
+          },
+          {
+            "name": "freq",
+            "type": "Simplex",
+            "required": true,
+            "description": "Base frequencies."
+          },
+          {
+            "name": "meanRate",
+            "type": "Rate",
+            "required": false,
+            "description": "Overall rate of substitution."
+          }
         ]
       },
       {
@@ -96,20 +185,43 @@
         "namespace": "beast.bmodeltest",
         "description": "Site rates whose gamma shape and proportion of invariable sites are each switched on or off by an indicator, so that bModelTest averages over site models as well as rate matrices.",
         "generatedType": "Distribution<Vector<Rate; num=numSites.value>>",
-        "role": "siteRates",
         "arguments": [
-          {"name": "shape", "type": "PositiveReal", "required": true,
-           "description": "Shape of the discretised gamma distribution."},
-          {"name": "numCategories", "type": "PositiveInteger", "required": true,
-           "description": "Number of rate categories."},
-          {"name": "proportionInvariable", "type": "Probability", "required": true,
-           "description": "Proportion of invariable sites."},
-          {"name": "useShape", "type": "Boolean", "required": true,
-           "description": "Whether the non-zero site rates follow a discretised gamma."},
-          {"name": "useProportionInvariable", "type": "Boolean", "required": true,
-           "description": "Whether a proportion of sites is invariable."},
-          {"name": "numSites", "type": "NonNegativeInteger", "required": true,
-           "description": "Number of sites."}
+          {
+            "name": "shape",
+            "type": "PositiveReal",
+            "required": true,
+            "description": "Shape of the discretised gamma distribution."
+          },
+          {
+            "name": "numCategories",
+            "type": "PositiveInteger",
+            "required": true,
+            "description": "Number of rate categories."
+          },
+          {
+            "name": "proportionInvariable",
+            "type": "Probability",
+            "required": true,
+            "description": "Proportion of invariable sites."
+          },
+          {
+            "name": "useShape",
+            "type": "Boolean",
+            "required": true,
+            "description": "Whether the non-zero site rates follow a discretised gamma."
+          },
+          {
+            "name": "useProportionInvariable",
+            "type": "Boolean",
+            "required": true,
+            "description": "Whether a proportion of sites is invariable."
+          },
+          {
+            "name": "numSites",
+            "type": "NonNegativeInteger",
+            "required": true,
+            "description": "Number of sites."
+          }
         ]
       }
     ]

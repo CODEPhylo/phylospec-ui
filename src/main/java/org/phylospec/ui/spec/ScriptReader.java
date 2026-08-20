@@ -3,8 +3,10 @@ package org.phylospec.ui.spec;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 import org.phylospec.ast.AstType;
@@ -14,6 +16,7 @@ import org.phylospec.components.Argument;
 import org.phylospec.components.Generator;
 import org.phylospec.lexer.Lexer;
 import org.phylospec.lexer.Token;
+import org.phylospec.lexer.TokenType;
 import org.phylospec.parser.Parser;
 import org.phylospec.ui.model.Analysis;
 import org.phylospec.ui.model.Component;
@@ -46,6 +49,15 @@ public final class ScriptReader {
     /** Every {@code ~} statement in the model block, by variable name. */
     private final Map<String, Stmt.Draw> draws = new LinkedHashMap<>();
 
+    /**
+     * Every {@code =} statement in the model block that names a function-valued intermediate, and
+     * the names of those an argument has since claimed. One nothing claims is a statement the tabs
+     * have nowhere to put, so the load is refused rather than quietly dropping it.
+     */
+    private final Map<String, Expr.Call> intermediates = new LinkedHashMap<>();
+
+    private final Set<String> claimed = new LinkedHashSet<>();
+
     private ScriptReader(Library library) {
         this.library = library;
     }
@@ -67,6 +79,13 @@ public final class ScriptReader {
             if (statement instanceof Stmt.Draw draw && Stmt.Block.MODEL.equals(draw.block)) {
                 draws.put(draw.name, draw);
             }
+            // An intermediate may be declared after the statement that uses it is read, so they are
+            // all collected before anything is bound.
+            if (statement instanceof Stmt.Assignment assignment
+                    && Stmt.Block.MODEL.equals(assignment.block)
+                    && !"qMatrix".equals(assignment.name)) {
+                intermediates.put(assignment.name, callOf(assignment.expression, assignment.name));
+            }
         }
 
         // The tabs' defaults have to be cleared, or a script that leaves out a clock or rate
@@ -87,6 +106,13 @@ public final class ScriptReader {
 
         if (analysis.partitions().isEmpty()) throw new Unsupported("The script loads no alignment.");
         if (!sawModel) throw new Unsupported("The script has no substitution model or tree prior.");
+
+        for (String name : intermediates.keySet()) {
+            if (!claimed.contains(name)) {
+                throw new Unsupported("Nothing in the model uses " + name + ", "
+                        + "and the tabs have nowhere to keep it.");
+            }
+        }
         return analysis;
     }
 
@@ -157,9 +183,9 @@ public final class ScriptReader {
     /** Returns true if the statement set one of the model tabs. */
     private boolean readModelStatement(Analysis analysis, Stmt statement) {
         if (statement instanceof Stmt.Assignment assignment) {
-            if (!"qMatrix".equals(assignment.name)) {
-                throw new Unsupported("Unexpected assignment in the model block: " + assignment.name + ".");
-            }
+            // Anything else is a function-valued intermediate, read as part of the argument that
+            // names it rather than on its own.
+            if (!"qMatrix".equals(assignment.name)) return false;
             bind(analysis.substitutionModel(), callOf(assignment.expression, assignment.name), true);
             return true;
         }
@@ -218,6 +244,12 @@ public final class ScriptReader {
         }
 
         param.estimateProperty().set(false);
+        if (value instanceof Expr.Variable variable && param.isComponentValued()
+                && intermediates.containsKey(variable.variableName)) {
+            claimed.add(variable.variableName);
+            param.priorProperty().set(nested(intermediates.get(variable.variableName), argsEstimable));
+            return;
+        }
         if (value instanceof Expr.Call call && param.isComponentValued()) {
             param.priorProperty().set(nested(call, argsEstimable));
             return;
@@ -282,6 +314,10 @@ public final class ScriptReader {
                     || candidates.stream().anyMatch(g -> produces(type, g.getGeneratedType()));
         }
         if (expression instanceof Expr.Variable variable) {
+            // An intermediate is typed by the function that builds it. This is what tells the two
+            // coalescents apart: both take populationSize, one a number and one a function of time.
+            Expr.Call intermediate = intermediates.get(variable.variableName);
+            if (intermediate != null) return fits(type, intermediate);
             Stmt.Draw draw = draws.get(variable.variableName);
             // A variable the writer supplies, such as the tree, is not declared in the model block.
             return draw == null || produces(type, typeName(draw.type));
@@ -350,13 +386,26 @@ public final class ScriptReader {
                     : String.valueOf(literal.value);
         }
         if (expression instanceof Expr.Unary unary) {
-            return unary.operator + text(unary.right, what);
+            return TokenType.getLexeme(unary.operator) + text(unary.right, what);
         }
         if (expression instanceof Expr.Grouping grouping) return text(grouping.expression, what);
         if (expression instanceof Expr.Array array) {
             return array.elements.stream()
                     .map(element -> text(element, what))
                     .collect(Collectors.joining(", ", "[", "]"));
+        }
+        // A value box holds free text, so an expression typed into one is rendered straight back.
+        // Whitespace is normalised in the process, which is the only thing a round trip changes.
+        if (expression instanceof Expr.Variable variable) return variable.variableName;
+        if (expression instanceof Expr.Binary binary) {
+            return text(binary.left, what) + " " + TokenType.getLexeme(binary.operator)
+                    + " " + text(binary.right, what);
+        }
+        if (expression instanceof Expr.Call call) {
+            return call.functionName + java.util.Arrays.stream(call.arguments)
+                    .map(argument -> (argument.name == null ? "" : argument.name + "=")
+                            + text(argument.expression, what))
+                    .collect(Collectors.joining(", ", "(", ")"));
         }
         throw new Unsupported("The value of " + what + " is an expression the tabs cannot edit.");
     }

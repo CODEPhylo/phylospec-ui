@@ -24,6 +24,7 @@ public final class Param {
     private final String description;
     private final boolean required;
     private final boolean estimable;
+    private final boolean indicator;
 
     private final StringProperty value = new SimpleStringProperty();
     private final BooleanProperty estimate = new SimpleBooleanProperty(false);
@@ -41,7 +42,8 @@ public final class Param {
         this.type = argument.getType();
         this.description = argument.getDescription();
         this.required = Boolean.TRUE.equals(argument.getRequired());
-        this.estimable = estimable && isEstimatableType(type);
+        this.indicator = isIndicator(argument);
+        this.estimable = estimable && (indicator || isEstimatableType(type));
         this.value.set(defaultValue(argument));
         this.estimate.set(this.estimable && this.required);
         this.variable.set(name);
@@ -65,9 +67,18 @@ public final class Param {
     }
 
     /**
-     * Only continuous quantities get an estimate checkbox. Integer-valued arguments in the library
-     * are discretisation settings — gamma category counts and the like — which are chosen, not
-     * inferred, so offering them a prior would be misleading.
+     * An indicator selects among models rather than measuring anything, so it is sampled to average
+     * over the choice — bModelTest's model indicator is the example. A library marks one with the
+     * {@code indicator} widget, since nothing about an integer argument's type says which it is.
+     */
+    private static boolean isIndicator(Argument argument) {
+        return argument.getUiHints() != null && "indicator".equals(argument.getUiHints().getWidget());
+    }
+
+    /**
+     * Only continuous quantities get an estimate checkbox. Other integer-valued arguments in the
+     * library are discretisation settings — gamma category counts and the like — which are chosen,
+     * not inferred, so offering them a prior would be misleading.
      */
     private static boolean isEstimatableType(String type) {
         return switch (Library.head(type)) {
@@ -116,6 +127,11 @@ public final class Param {
 
     public boolean estimable() {
         return estimable;
+    }
+
+    /** True for a choice among models, which is averaged over rather than estimated. */
+    public boolean isIndicator() {
+        return indicator;
     }
 
     public StringProperty valueProperty() {
