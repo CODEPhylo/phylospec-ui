@@ -18,6 +18,20 @@
     ],
     "generators": [
       {
+        "name": "Bernoulli",
+        "namespace": "beast.distributions",
+        "description": "Bernoulli distribution over a Boolean. Core's Bernoulli generates a NonNegativeInteger, which cannot stand in for the on/off switch of a model-averaging component.",
+        "generatedType": "Distribution<Boolean>",
+        "arguments": [
+          {
+            "name": "p",
+            "type": "Probability",
+            "required": true,
+            "description": "Probability of true."
+          }
+        ]
+      },
+      {
         "name": "BICEPS",
         "namespace": "beast.evolution.tree.coalescent",
         "description": "Bayesian Integrated Coalescent Epoch PlotS: a skyline plot that integrates out population sizes under an inverse gamma prior.",
@@ -208,13 +222,19 @@
             "name": "useShape",
             "type": "Boolean",
             "required": true,
-            "description": "Whether the non-zero site rates follow a discretised gamma."
+            "description": "Whether the non-zero site rates follow a discretised gamma.",
+            "uiHints": {
+              "widget": "indicator"
+            }
           },
           {
             "name": "useProportionInvariable",
             "type": "Boolean",
             "required": true,
-            "description": "Whether a proportion of sites is invariable."
+            "description": "Whether a proportion of sites is invariable.",
+            "uiHints": {
+              "widget": "indicator"
+            }
           },
           {
             "name": "numSites",

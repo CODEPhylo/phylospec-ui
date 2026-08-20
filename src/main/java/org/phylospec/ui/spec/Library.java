@@ -213,6 +213,7 @@ public final class Library {
             case "NonNegativeReal", "Age" -> "Exponential";
             case "Real" -> "Normal";
             case "Integer", "NonNegativeInteger", "PositiveInteger", "Count" -> "DiscreteUniform";
+            case "Boolean" -> "Bernoulli";
             default -> null;
         };
         return candidates.stream()

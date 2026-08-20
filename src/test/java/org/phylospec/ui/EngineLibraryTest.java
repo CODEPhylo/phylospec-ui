@@ -267,24 +267,38 @@ class EngineLibraryTest {
     }
 
     /**
-     * The site-rate half of bModelTest. Its two switches stay literal: BEAUti would draw them as
-     * checkboxes, and bModelTest samples them, but core has no distribution over Boolean for the
-     * `~` statement to use — so "average over" has nothing to offer them yet.
+     * The site-rate half of bModelTest. Its two switches are indicators like the model indicator:
+     * BEAUti would draw them as checkboxes, and bModelTest samples them, so ticking "average over"
+     * has to turn each into a Bernoulli draw.
+     *
+     * <p>The Bernoulli it draws from is the engine library's, not core's. Core's generates a
+     * NonNegativeInteger, which cannot stand in for a Boolean switch — so the library carries an
+     * overload generating {@code Distribution<Boolean>}, and the declared type of each variable is
+     * what tells the two apart.
      */
     @Test
-    void bModelTestSiteRatesProduceAValidScript() {
+    void bModelTestSiteRatesAverageOverTheirSwitches() {
         Analysis analysis = analysisWithData(withBeast);
         Component rates = analysis.siteRates();
         rates.generatorProperty().set(withBeast.overloads("bSiteRates").get(0));
         rates.param("numCategories").valueProperty().set("4");
 
-        assertEquals(List.of(), withBeast.priorsFor("Boolean"), "core gained a Boolean distribution");
-        assertFalse(rates.param("useShape").estimable());
+        assertEquals(2, withBeast.overloads("Bernoulli").size(), "core's and the engine's");
+        assertEquals("Bernoulli", withBeast.defaultPriorFor("Boolean").getName());
+
+        for (String switchName : List.of("useShape", "useProportionInvariable")) {
+            Param flag = rates.param(switchName);
+            assertTrue(flag.isIndicator(), switchName + " is a model choice, not a measurement");
+            flag.estimateProperty().set(true);
+            assertEquals("Bernoulli", flag.priorProperty().get().name());
+        }
 
         String script = ScriptWriter.write(analysis);
-        assertTrue(script.contains("Vector<Rate> siteRates ~ bSiteRates("), script);
+        assertTrue(script.contains("Boolean useShape ~ Bernoulli("), script);
+        assertTrue(script.contains("Boolean useProportionInvariable ~ Bernoulli("), script);
         assertTrue(script.contains("numSites=numSites(primates)"), script);
         assertEquals(List.of(), Validator.validate(withBeast, script), script);
+        assertEquals(script, ScriptWriter.write(ScriptReader.read(withBeast, script)));
     }
 
     private static Analysis bModelTestAnalysis() {

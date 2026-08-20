@@ -141,14 +141,16 @@ operator on the indicator, not a distribution. The indicator's trace is what a b
 is *for*, so hiding it inside a `~` on `qMatrix` would lose the result.
 
 An indicator is not measured, it is summed over, so its tick reads **average over** rather than
-**estimate**. Nothing about an integer argument's type says which it is — a gamma category count is
-chosen, not inferred — so a library marks one with the `indicator` widget in its `uiHints`.
+**estimate**. Nothing about an argument's type says which it is — a gamma category count is chosen,
+not inferred — so a library marks one with the `indicator` widget in its `uiHints`. bModelTest has
+three: the model indicator, and the two switches on `bSiteRates` that turn gamma rates and
+invariable sites on and off, which are BEAUti's checkboxes promoted to random variables.
 
-The half of bModelTest that does *not* work yet is the site-model switches. `bSiteRates` takes
-`useShape` and `useProportionInvariable`, which BEAUti would draw as checkboxes and bModelTest
-samples from a Bernoulli. Core's `Bernoulli` generates a `NonNegativeInteger`, not a `Boolean`, and
-nothing in core generates a `Distribution<Boolean>` — so those two switches can only be literals
-here. That is a gap in core rather than in the UI.
+Those two switches want a `Boolean`, and core's `Bernoulli` generates a `NonNegativeInteger`. So the
+sample library carries a second `Bernoulli` generating `Distribution<Boolean>`. Both are in scope at
+once and the declared type of each variable is what tells them apart, which is worth knowing works:
+an engine library can overload a core component rather than having to rename around it. Core gaining
+a `Distribution<Boolean>` of its own would make this one unnecessary.
 
 ## Opening a script
 
