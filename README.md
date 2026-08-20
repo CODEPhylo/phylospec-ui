@@ -137,6 +137,22 @@ frequencies and a guess otherwise. Core declares none, and that shows: `wag`, `j
 `Simplex baseFrequencies` of **twenty**, and get four. Adding `dimension` to those three in core
 would fix it, here and in every other tool reading the library.
 
+Two spellings say this: the schema's `dimension` field on the argument, and the type language's
+`num` property — `Simplex<;num=6>` — which is already how *generated* types say it. Both are read
+here, the property winning. Neither is enforced by the type resolver, checked against phylospec
+`256f2e40` as well as the `5b5b9dc4` this is built on, so a tool that ignores them writes a
+wrong-length vector that still type-checks.
+
+Of the two, the type property looks like the one to keep. It is one mechanism rather than two for
+the same idea, it is the half a resolver could come to check, and it composes: the frequencies of an
+`mk` model are as long as the alignment has states, which `Simplex<;num=numStates(alignment)>` can
+say and a fixed integer cannot. That last one needs a `numStates` function, which core does not yet
+have.
+
+A flat simplex has to sum to one: BEAST's tiling accepts a sum within 1e-6 and PhyloSpec's own
+`Simplex` asks for 1e-10, so a size that does not divide one exactly cannot just repeat a rounded
+element. The last element absorbs the rounding instead, which keeps 1/4 and 1/20 exact.
+
 ### bModelTest
 
 Worth noting how it decomposes, because it is not what it looks like. bModelTest is not a

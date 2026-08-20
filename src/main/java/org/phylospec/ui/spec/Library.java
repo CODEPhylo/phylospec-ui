@@ -330,6 +330,23 @@ public final class Library {
     }
 
     /**
+     * The value of a type property, as in the {@code num} of
+     * {@code "Simplex<;num=6>"} or {@code "Vector<Rate; num=tree.numBranches>"}. Null if the type
+     * carries no such property.
+     */
+    public static String property(String type, String name) {
+        String inner = inner(type);
+        if (inner == null) return null;
+        int semicolon = inner.indexOf(';');
+        if (semicolon < 0) return null;
+        for (String property : inner.substring(semicolon + 1).split(",")) {
+            String[] halves = property.split("=", 2);
+            if (halves.length == 2 && halves[0].trim().equals(name)) return halves[1].trim();
+        }
+        return null;
+    }
+
+    /**
      * The element type of a generic type, with the type properties dropped:
      * {@code "Vector<Rate; num=tree.numBranches>"} to {@code "Rate"}.
      */

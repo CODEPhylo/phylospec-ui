@@ -1,5 +1,12 @@
 package org.phylospec.ui.model;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.stream.Collectors;
+
 import javafx.beans.property.BooleanProperty;
 import javafx.beans.property.ObjectProperty;
 import javafx.beans.property.SimpleBooleanProperty;
@@ -62,8 +69,8 @@ public final class Param {
             case "NonNegativeReal", "Age" -> "0.0";
             case "Probability" -> "0.5";
             case "Integer", "NonNegativeInteger", "PositiveInteger", "Count" -> "1";
-            case "Simplex" -> vector(1.0 / size, size);
-            case "Vector" -> vector(1.0, size);
+            case "Simplex" -> flatSimplex(size);
+            case "Vector" -> repeated("1.0", size);
             case "Boolean" -> "true";
             default -> "";
         };
@@ -77,27 +84,67 @@ public final class Param {
     private static final int DEFAULT_DIMENSION = 4;
 
     /**
-     * The declared length of a vector-valued argument, when the library gives one as a number. A
-     * dimension written as an expression — {@code tree.numBranches} — is left alone: it depends on
-     * a model that is not built yet, and the writer wires those arguments itself.
+     * The declared length of a vector-valued argument, when the library gives one as a number.
+     *
+     * <p>Two spellings say this. The schema has a {@code dimension} field on the argument, and the
+     * type language has a {@code num} property — {@code Simplex<;num=6>} — which is already how
+     * generated types say it. Neither is enforced by the type resolver, so both are read here and
+     * the property wins, being the one a resolver could come to check.
+     *
+     * <p>A length written as an expression rather than a number — {@code tree.numBranches} — is
+     * left alone: it depends on a model that is not built yet, and the writer wires those arguments
+     * itself.
      */
     private static Integer fixedDimension(Argument argument) {
-        return argument.getDimension() instanceof Number number && number.intValue() > 0
-                ? number.intValue()
-                : null;
+        Integer declared = positive(Library.property(argument.getType(), "num"));
+        if (declared != null) return declared;
+        return argument.getDimension() instanceof Number number
+                ? positive(String.valueOf(number.intValue()))
+                : positive(String.valueOf(argument.getDimension()));
     }
 
-    private static String vector(double element, int size) {
-        String text = trim(element);
+    private static Integer positive(String text) {
+        try {
+            int value = Integer.parseInt(text.trim());
+            return value > 0 ? value : null;
+        } catch (NumberFormatException | NullPointerException e) {
+            return null;
+        }
+    }
+
+    private static String repeated(String element, int size) {
         return java.util.stream.IntStream.range(0, size)
-                .mapToObj(i -> text)
+                .mapToObj(i -> element)
                 .collect(java.util.stream.Collectors.joining(", ", "[", "]"));
     }
 
-    /** Six decimal places is enough for a starting value, and keeps 1/4 and 1/20 exact. */
-    private static String trim(double value) {
-        String text = String.format("%.6f", value).replaceAll("0+$", "");
-        return text.endsWith(".") ? text + "0" : text;
+    /**
+     * A flat simplex of {@code size} elements.
+     *
+     * <p>The elements have to sum to one, and for a size that does not divide one exactly — six
+     * relative rates, three states — no repeated decimal does. So the last element takes up whatever
+     * rounding the others left behind: {@code 1/4} and {@code 1/20} still come out exact, and
+     * {@code 1/6} comes out as five of one value and one of another.
+     */
+    private static String flatSimplex(int size) {
+        BigDecimal one = BigDecimal.ONE.setScale(SIMPLEX_SCALE);
+        BigDecimal element = one.divide(BigDecimal.valueOf(size), RoundingMode.HALF_UP);
+        BigDecimal remainder = one.subtract(element.multiply(BigDecimal.valueOf(size - 1L)));
+
+        List<String> elements = new ArrayList<>(Collections.nCopies(size - 1, plain(element)));
+        elements.add(plain(remainder));
+        return elements.stream().collect(Collectors.joining(", ", "[", "]"));
+    }
+
+    /**
+     * Enough places that the rounding the last element absorbs stays far below the tolerance an
+     * engine allows on the sum — BEAST's is 1e-6, and PhyloSpec's own Simplex asks for 1e-10.
+     */
+    private static final int SIMPLEX_SCALE = 12;
+
+    private static String plain(BigDecimal value) {
+        String text = value.stripTrailingZeros().toPlainString();
+        return text.contains(".") ? text : text + ".0";
     }
 
     /**
@@ -180,7 +227,7 @@ public final class Param {
     void resizeTo(int size) {
         String head = Library.head(type);
         if (!"Vector".equals(head) && !"Simplex".equals(head)) return;
-        value.set("Simplex".equals(head) ? vector(1.0 / size, size) : vector(1.0, size));
+        value.set("Simplex".equals(head) ? flatSimplex(size) : repeated("1.0", size));
     }
 
     public StringProperty valueProperty() {

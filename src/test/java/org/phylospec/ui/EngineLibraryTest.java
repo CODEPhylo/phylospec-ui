@@ -8,12 +8,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.List;
 
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import org.phylospec.components.Argument;
 import org.phylospec.components.Generator;
 import org.phylospec.ui.model.Analysis;
 import org.phylospec.ui.model.Component;
@@ -318,7 +320,8 @@ class EngineLibraryTest {
 
         // The literal is what the tab shows once "estimate" is unticked.
         rates.estimateProperty().set(false);
-        assertEquals("[0.166667, 0.166667, 0.166667, 0.166667, 0.166667, 0.166667]",
+        assertEquals("[0.166666666667, 0.166666666667, 0.166666666667, "
+                        + "0.166666666667, 0.166666666667, 0.166666666665]",
                 rates.valueProperty().get());
 
         Param freq = substitution.param("freq");
@@ -341,6 +344,62 @@ class EngineLibraryTest {
         assertEquals(null, frequencies.dimension());
         frequencies.estimateProperty().set(false);
         assertEquals("[0.25, 0.25, 0.25, 0.25]", frequencies.valueProperty().get());
+    }
+
+    /**
+     * A simplex default has to be a simplex. BEAST's tiling accepts a sum within 1e-6 of one and
+     * PhyloSpec's own Simplex asks for 1e-10, so a flat simplex of a size that does not divide one
+     * exactly cannot just repeat a rounded element.
+     */
+    @Test
+    void aFlatSimplexDefaultSumsToOne() {
+        Argument argument = new Argument();
+        argument.setName("frequencies");
+        argument.setType("Simplex");
+
+        for (int size : new int[] {2, 3, 4, 5, 6, 7, 9, 20, 61}) {
+            argument.setDimension(size);
+            Param param = new Param(argument, false);
+
+            List<Double> elements = Arrays.stream(
+                            param.valueProperty().get().replaceAll("[\\[\\]]", "").split(","))
+                    .map(String::trim).map(Double::valueOf).toList();
+
+            assertEquals(size, elements.size(), "wrong length for " + size);
+            double sum = elements.stream().mapToDouble(Double::doubleValue).sum();
+            assertTrue(Math.abs(sum - 1.0) <= 1e-10,
+                    "a flat simplex of " + size + " summed to " + sum);
+            assertTrue(elements.stream().allMatch(e -> e >= 0 && e <= 1), "not in [0, 1]: " + size);
+        }
+    }
+
+    /**
+     * A length may be written as the schema's {@code dimension} field or as the type language's
+     * {@code num} property. Neither is checked by the resolver, so a library may use either and the
+     * UI reads both.
+     */
+    @Test
+    void aLengthMayBeWrittenEitherWay() {
+        Argument field = new Argument();
+        field.setName("rates");
+        field.setType("Simplex");
+        field.setDimension(6);
+
+        Argument property = new Argument();
+        property.setName("rates");
+        property.setType("Simplex<;num=6>");
+
+        assertEquals(6, new Param(field, false).dimension());
+        assertEquals(6, new Param(property, false).dimension());
+        assertEquals(new Param(field, false).valueProperty().get(),
+                new Param(property, false).valueProperty().get());
+
+        // A length that depends on the rest of the model is not a number, and is left alone.
+        Argument expression = new Argument();
+        expression.setName("branchRates");
+        expression.setType("Vector<Rate; num=tree.numBranches>");
+        expression.setDimension("tree.numBranches");
+        assertEquals(null, new Param(expression, false).dimension());
     }
 
     private static Analysis bModelTestAnalysis() {
