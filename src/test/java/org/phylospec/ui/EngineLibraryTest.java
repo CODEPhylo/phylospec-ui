@@ -92,7 +92,9 @@ class EngineLibraryTest {
                 List.of("Yule", "BirthDeath", "Coalescent", "SkylineCoalescent", "FossilizedBirthDeath"),
                 names(analysis, Library.TREE_PRIOR));
         assertTrue(names(analysis, Library.SUBSTITUTION_MODEL).containsAll(Analysis.SUBSTITUTION_MODELS));
-        assertEquals(List.of("PhyloCTMC", "PhyloBM", "PhyloOU"), names(analysis, Library.TREE_LIKELIHOOD));
+        assertEquals(List.of("PhyloCTMC", "PhyloBM", "PhyloOU"),
+                core.withRole(Library.TREE_LIKELIHOOD, List.of()).stream()
+                        .map(Generator::getName).distinct().toList());
     }
 
     /** Distributions over a vector of something other than a rate are not site rates. */
@@ -401,6 +403,77 @@ class EngineLibraryTest {
         expression.setType("Vector<Rate; num=tree.numBranches>");
         expression.setDimension("tree.numBranches");
         assertEquals(null, new Param(expression, false).dimension());
+    }
+
+    /**
+     * An observation is invariant, so a likelihood over continuous traits cannot be observed as a
+     * nucleotide alignment. Offering it would be offering a script that cannot validate.
+     */
+    @Test
+    void onlyLikelihoodsMatchingTheDataAreOffered() {
+        Analysis empty = new Analysis(core);
+        assertEquals(List.of("PhyloCTMC", "PhyloBM", "PhyloOU"), names(empty, Library.TREE_LIKELIHOOD),
+                "with no data loaded there is nothing to match against");
+
+        assertEquals(List.of("PhyloCTMC"), names(analysisWithData(core), Library.TREE_LIKELIHOOD),
+                "PhyloBM and PhyloOU model continuous traits, which no loader produces");
+    }
+
+    /**
+     * The point of making the likelihood a choice: SNAPP takes no rate matrix, no site rates and no
+     * clock, so those tabs have nothing to set and their models must not be written.
+     */
+    @Test
+    void aLikelihoodWithoutASiteModelWritesNone() {
+        Analysis analysis = analysisWithData(withBeast);
+        assertTrue(names(analysis, Library.TREE_LIKELIHOOD).contains("SNAPP"));
+
+        analysis.likelihood().generatorProperty().set(withBeast.overloads("SNAPP").get(0));
+        for (String argument : List.of("qMatrix", "siteRates", "branchRates")) {
+            assertFalse(analysis.likelihoodTakes(argument), "SNAPP takes no " + argument);
+        }
+
+        // What the UI does when those tabs go away.
+        analysis.substitutionModel().generatorProperty().set(null);
+        analysis.siteRates().generatorProperty().set(null);
+        analysis.clockModel().generatorProperty().set(null);
+
+        String script = ScriptWriter.write(analysis);
+        assertFalse(script.contains("qMatrix"), script);
+        assertFalse(script.contains("branchRates"), script);
+        assertTrue(script.contains("~ SNAPP("), script);
+        assertTrue(script.contains(") observed as primates"), script);
+        assertEquals(List.of(), Validator.validate(withBeast, script), script);
+        assertEquals(script, ScriptWriter.write(ScriptReader.read(withBeast, script)));
+    }
+
+    /** A likelihood's own arguments are edited and estimated like any other component's. */
+    @Test
+    void aLikelihoodsOwnArgumentsAreEstimable() {
+        Analysis analysis = analysisWithData(withBeast);
+        analysis.likelihood().generatorProperty().set(withBeast.overloads("SNAPP").get(0));
+
+        assertEquals(List.of("coalescentRate", "u", "v", "nonPolymorphic"),
+                analysis.likelihood().params().stream().map(Param::name).toList());
+        assertTrue(analysis.estimatedParams().stream().map(Param::name).toList().containsAll(
+                List.of("u", "v")), "required rates are estimated by default");
+
+        assertTrue(analysis.likelihoodNeeds("coalescentRate"));
+        assertFalse(analysis.likelihoodNeeds("nonPolymorphic"));
+    }
+
+    /** Every partition is observed under the same likelihood, so a script giving two is refused. */
+    @Test
+    void differingLikelihoodsAcrossPartitionsAreRefused() {
+        Analysis analysis = analysisWithData(withBeast);
+        String script = ScriptWriter.write(analysis);
+        String doubled = script.replace("}\n\nmcmc {",
+                "    Alignment<Character> second ~ SNAPP(tree=tree, coalescentRate=[1.0],\n"
+                        + "        u=1.0, v=1.0) observed as primates\n}\n\nmcmc {");
+
+        ScriptReader.Unsupported refusal = assertThrows(ScriptReader.Unsupported.class,
+                () -> ScriptReader.read(withBeast, doubled));
+        assertTrue(refusal.getMessage().contains("different likelihoods"), refusal.getMessage());
     }
 
     private static Analysis bModelTestAnalysis() {

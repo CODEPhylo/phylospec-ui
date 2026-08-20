@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.ArrayList;
 import java.util.List;
 
 import javafx.animation.Animation;
@@ -34,7 +35,10 @@ import javafx.stage.FileChooser;
 import javafx.stage.Stage;
 import javafx.util.Duration;
 
+import org.phylospec.components.Generator;
+
 import org.phylospec.ui.model.Analysis;
+import org.phylospec.ui.model.Component;
 import org.phylospec.ui.panel.ComponentPanel;
 import org.phylospec.ui.panel.McmcPanel;
 import org.phylospec.ui.panel.PartitionsPanel;
@@ -65,6 +69,9 @@ public class PhyloSpecUI extends Application {
     private TextArea script;
     private Label status;
     private ScrollPane priorsHost;
+    private List<Tab> allTabs;
+    private Tab siteModelTab;
+    private Tab clockModelTab;
     private SplitPane split;
     private javafx.scene.Node scriptPane;
     private Path savedTo;
@@ -139,20 +146,29 @@ public class PhyloSpecUI extends Application {
 
         priorsHost = new ScrollPane();
 
-        tabs.getTabs().addAll(
+        siteModelTab = tab("Site Model", ComponentPanel.build(analysis,
+                "The substitution process, shared by every partition.",
+                List.of(
+                        ComponentPanel.Choice.of("Substitution model",
+                                Library.SUBSTITUTION_MODEL, analysis.substitutionModel()),
+                        new ComponentPanel.Choice("Site rates",
+                                Library.SITE_RATES, analysis.siteRates(), true))));
+        clockModelTab = tab("Clock Model", ComponentPanel.build(analysis,
+                "How substitution rates vary along the branches of the tree.",
+                List.of(ComponentPanel.Choice.of("Clock model",
+                        Library.CLOCK_MODEL, analysis.clockModel()))));
+
+        allTabs = List.of(
                 tab("Partitions", PartitionsPanel.build(analysis)),
                 tab("Tip Dates", TipDatesPanel.build(analysis)),
-                tab("Site Model", ComponentPanel.build(analysis,
-                        "The substitution process, shared by every partition.",
-                        List.of(
-                                ComponentPanel.Choice.of("Substitution model",
-                                        Library.SUBSTITUTION_MODEL, analysis.substitutionModel()),
-                                new ComponentPanel.Choice("Site rates",
-                                        Library.SITE_RATES, analysis.siteRates(), true)))),
-                tab("Clock Model", ComponentPanel.build(analysis,
-                        "How substitution rates vary along the branches of the tree.",
-                        List.of(ComponentPanel.Choice.of("Clock model",
-                                Library.CLOCK_MODEL, analysis.clockModel())))),
+                tab("Likelihood", ComponentPanel.build(analysis,
+                        "The distribution the alignments are drawn from. Every other model tab "
+                                + "supplies one of its arguments, so this is what decides which of "
+                                + "them apply.",
+                        List.of(ComponentPanel.Choice.of("Likelihood",
+                                Library.TREE_LIKELIHOOD, analysis.likelihood())))),
+                siteModelTab,
+                clockModelTab,
                 tab("Tree Prior", ComponentPanel.build(analysis,
                         "The process assumed to have generated the tree.",
                         List.of(ComponentPanel.Choice.of("Tree prior",
@@ -160,11 +176,73 @@ public class PhyloSpecUI extends Application {
                 tab("Priors", PriorsPanel.build(analysis, priorsHost)),
                 tab("MCMC", McmcPanel.build(analysis)));
 
+        analysis.likelihood().generatorProperty()
+                .addListener((observable, was, now) -> showWhatTheLikelihoodNeeds(tabs));
+        showWhatTheLikelihoodNeeds(tabs);
+
         // The Priors tab is derived from the others, so it is rebuilt each time it is shown.
         tabs.getSelectionModel().selectedItemProperty().addListener((observable, was, now) -> {
             if (now != null && "Priors".equals(now.getText())) PriorsPanel.refresh(analysis, priorsHost);
         });
         return tabs;
+    }
+
+    /**
+     * Shows only what the chosen likelihood asks for. SNAPP takes no rate matrix and no branch
+     * rates, so choosing it leaves neither tab standing; PhyloBM takes site rates but no rate
+     * matrix, so the Site Model tab keeps one chooser and loses the other.
+     *
+     * <p>A model whose chooser goes away is cleared with it, or the script would keep a rate matrix
+     * that nothing asks for. One whose chooser comes back is given a component, so the script stays
+     * complete rather than waiting for the user to notice a blank tab.
+     */
+    private void showWhatTheLikelihoodNeeds(TabPane tabs) {
+        boolean matrix = analysis.likelihoodTakes("qMatrix");
+        boolean rates = analysis.likelihoodTakes("siteRates");
+        boolean clock = analysis.likelihoodTakes("branchRates");
+
+        require(analysis.substitutionModel(), Library.SUBSTITUTION_MODEL, matrix);
+        require(analysis.siteRates(), Library.SITE_RATES, rates && analysis.likelihoodNeeds("siteRates"));
+        require(analysis.clockModel(), Library.CLOCK_MODEL, clock && analysis.likelihoodNeeds("branchRates"));
+        if (!rates) analysis.siteRates().generatorProperty().set(null);
+        if (!clock) analysis.clockModel().generatorProperty().set(null);
+
+        List<ComponentPanel.Choice> siteChoices = new ArrayList<>();
+        if (matrix) {
+            siteChoices.add(ComponentPanel.Choice.of("Substitution model",
+                    Library.SUBSTITUTION_MODEL, analysis.substitutionModel()));
+        }
+        if (rates) {
+            siteChoices.add(new ComponentPanel.Choice("Site rates", Library.SITE_RATES,
+                    analysis.siteRates(), !analysis.likelihoodNeeds("siteRates")));
+        }
+        if (!siteChoices.isEmpty()) {
+            siteModelTab.setContent(ComponentPanel.build(analysis,
+                    "The substitution process, shared by every partition.", siteChoices));
+        }
+        if (clock) {
+            clockModelTab.setContent(ComponentPanel.build(analysis,
+                    "How substitution rates vary along the branches of the tree.",
+                    List.of(new ComponentPanel.Choice("Clock model", Library.CLOCK_MODEL,
+                            analysis.clockModel(), !analysis.likelihoodNeeds("branchRates")))));
+        }
+
+        List<Tab> wanted = allTabs.stream()
+                .filter(tab -> (tab != siteModelTab || !siteChoices.isEmpty())
+                        && (tab != clockModelTab || clock))
+                .toList();
+        if (wanted.equals(tabs.getTabs())) return;
+
+        Tab selected = tabs.getSelectionModel().getSelectedItem();
+        tabs.getTabs().setAll(wanted);
+        if (wanted.contains(selected)) tabs.getSelectionModel().select(selected);
+    }
+
+    /** Puts a component on a chooser that has just appeared, so the script stays complete. */
+    private void require(Component component, String role, boolean wanted) {
+        if (!wanted || component.generator() != null) return;
+        List<Generator> choices = analysis.choicesFor(role);
+        if (!choices.isEmpty()) component.generatorProperty().set(choices.get(0));
     }
 
     private static Tab tab(String title, javafx.scene.Node content) {

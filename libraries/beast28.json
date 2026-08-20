@@ -245,6 +245,45 @@
             "description": "Number of sites."
           }
         ]
+      },
+      {
+        "name": "SNAPP",
+        "namespace": "beast.evolution.likelihood",
+        "description": "Biallelic SNP likelihood, integrating over gene trees within a species tree. Observes Alignment<Character> because that is what the loaders produce; PhyloSpec has no way for fromNexus to say it read binary data. Argument names follow SNAPP's BEAST inputs approximately.",
+        "generatedType": "Distribution<Alignment<Character; numTaxa=tree.numTaxa>>",
+        "arguments": [
+          {
+            "name": "tree",
+            "type": "Tree",
+            "required": true,
+            "description": "The species tree the gene trees are integrated within."
+          },
+          {
+            "name": "coalescentRate",
+            "type": "Vector<Rate>",
+            "required": true,
+            "description": "Coalescent rate per species-tree branch."
+          },
+          {
+            "name": "u",
+            "type": "Rate",
+            "required": true,
+            "description": "Mutation rate from the green to the red allele."
+          },
+          {
+            "name": "v",
+            "type": "Rate",
+            "required": true,
+            "description": "Mutation rate from the red to the green allele."
+          },
+          {
+            "name": "nonPolymorphic",
+            "type": "Boolean",
+            "required": false,
+            "default": false,
+            "description": "Whether monomorphic sites are counted in the likelihood."
+          }
+        ]
       }
     ]
   }

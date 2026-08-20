@@ -69,8 +69,7 @@ public final class ScriptWriter {
      */
     private List<Param> hoisted() {
         List<Param> found = new ArrayList<>();
-        for (Component component : List.of(analysis.substitutionModel(), analysis.siteRates(),
-                analysis.clockModel(), analysis.treePrior())) {
+        for (Component component : analysis.components()) {
             collectHoisted(component, found);
         }
         return found;
@@ -143,11 +142,14 @@ public final class ScriptWriter {
         List<String> statements = new ArrayList<>();
         String tree = analysis.treeNameProperty().get();
 
-        declarations(analysis.substitutionModel(), statements);
-        statements.add(assignment("QMatrix qMatrix = ", analysis.substitutionModel()));
+        // A likelihood that takes no rate matrix leaves the Site Model tab with nothing to choose,
+        // and an unused qMatrix declaration would be left standing.
+        if (analysis.substitutionModel().generator() != null) {
+            declarations(analysis.substitutionModel(), statements);
+            statements.add(assignment("QMatrix qMatrix = ", analysis.substitutionModel()));
+        }
 
-        boolean hasSiteRates = analysis.siteRates().generator() != null;
-        if (hasSiteRates) {
+        if (analysis.siteRates().generator() != null) {
             statements.add("");
             declarations(analysis.siteRates(), statements);
             statements.add(draw("siteRates", analysis.siteRates()));
@@ -157,16 +159,24 @@ public final class ScriptWriter {
         declarations(analysis.treePrior(), statements);
         statements.add(draw(tree, analysis.treePrior()));
 
-        boolean hasClock = analysis.clockModel().generator() != null;
-        if (hasClock) {
+        if (analysis.clockModel().generator() != null) {
             statements.add("");
             declarations(analysis.clockModel(), statements);
             statements.add(draw("branchRates", analysis.clockModel()));
         }
 
+        if (analysis.likelihood().generator() != null) {
+            List<String> declared = new ArrayList<>();
+            declarations(analysis.likelihood(), declared);
+            if (!declared.isEmpty()) {
+                statements.add("");
+                statements.addAll(declared);
+            }
+        }
+
         for (Partition partition : analysis.partitions()) {
             statements.add("");
-            statements.add(phyloCtmc(partition, hasSiteRates, hasClock));
+            statements.add(observation(partition));
         }
         return statements;
     }
@@ -208,14 +218,18 @@ public final class ScriptWriter {
         return call(type + " " + variable + " ~ ", component.name(), argsOf(component));
     }
 
-    private String phyloCtmc(Partition partition, boolean hasSiteRates, boolean hasClock) {
-        List<String> args = new ArrayList<>();
-        args.add("tree=" + analysis.treeNameProperty().get());
-        args.add("qMatrix=qMatrix");
-        if (hasSiteRates) args.add("siteRates=siteRates");
-        if (hasClock) args.add("branchRates=branchRates");
+    /**
+     * The statement that ties an alignment to the model: the chosen likelihood, applied to the
+     * structural variables the rest of the tabs produced, observed as the loaded data.
+     */
+    private String observation(Partition partition) {
+        Component likelihood = analysis.likelihood();
+        if (likelihood.generator() == null) {
+            return "// No likelihood chosen — pick one in the Likelihood tab.";
+        }
         String variable = unique(partition.name() + "Alignment");
-        return call("Alignment " + variable + " ~ ", "PhyloCTMC", args)
+        String type = declared(Library.inner(likelihood.generator().getGeneratedType()));
+        return call(type + " " + variable + " ~ ", likelihood.name(), argsOf(likelihood))
                 + " observed as " + partition.name();
     }
 
@@ -258,11 +272,17 @@ public final class ScriptWriter {
             case "tree" -> analysis.treeNameProperty().get();
             case "taxa" -> "taxa(" + first + ")";
             case "numSites" -> "numSites(" + first + ")";
-            case "qMatrix" -> "qMatrix";
-            case "siteRates" -> "siteRates";
-            case "branchRates" -> "branchRates";
+            // A structural variable only exists if the tab that declares it chose a component. An
+            // optional argument whose variable was never declared is left out of the call.
+            case "qMatrix" -> declaredBy(analysis.substitutionModel(), "qMatrix");
+            case "siteRates" -> declaredBy(analysis.siteRates(), "siteRates");
+            case "branchRates" -> declaredBy(analysis.clockModel(), "branchRates");
             default -> null;
         };
+    }
+
+    private static String declaredBy(Component component, String variable) {
+        return component.generator() == null ? null : variable;
     }
 
     private String valueOf(Param param) {

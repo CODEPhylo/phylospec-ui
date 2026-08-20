@@ -40,6 +40,7 @@ Verified against phylospec `5b5b9dc4` (14 Aug 2026), component library 1.4.0.
 | Tip Dates | How a sampling time is read from each taxon name | `age=` or `date=` argument, via `parse(...)` |
 | Site Model | Substitution model, and optional rate heterogeneity | `QMatrix qMatrix = ...`, `Vector<Rate> siteRates ~ ...` |
 | Clock Model | Strict or relaxed clock | `Vector<Rate> branchRates ~ ...` |
+| Likelihood | The distribution the alignments are drawn from | the `observed as` statement |
 | Tree Prior | The tree-generating process | `Tree tree ~ ...` |
 | Priors | A distribution for each value marked "estimate" | the `~` statements in the `model` block |
 | MCMC | Chain length, logging, seed | `mcmc` block |
@@ -73,6 +74,35 @@ Everything the UI knows about components comes from the component libraries, rea
 Structural arguments — `tree`, `taxa`, `numSites`, `qMatrix`, `siteRates`, `branchRates` — are
 supplied by `ScriptWriter` from the shape of the analysis rather than being asked of the user.
 
+## The likelihood decides the other tabs
+
+The distribution the alignments are drawn from is a choice like any other, not something the writer
+hardcodes. Everything on the Site Model, Clock Model and Tree Prior tabs exists to supply one of its
+arguments, so **the choice of likelihood decides which of those tabs apply**:
+
+| Likelihood | Site Model | Clock Model |
+|---|---|---|
+| `PhyloCTMC` | substitution model and site rates | strict or relaxed clock |
+| `SNAPP` | — | — |
+
+Choosing SNAPP removes both tabs and clears their models, since a script that kept a rate matrix no
+likelihood asks for would be wrong rather than merely untidy. Each chooser is separately
+conditional: a likelihood taking `siteRates` but no `qMatrix` keeps half the Site Model tab. A tab
+that comes back is given a component again, so the script never sits in a half-built state.
+
+Only likelihoods that could be observed as the loaded data are offered. An observation is invariant
+in PhyloSpec — the resolver refuses `Alignment<Real>` observed as `Alignment<Character>` — so
+`PhyloBM` and `PhyloOU` are hidden once a nucleotide alignment is loaded, rather than offered as a
+choice that cannot validate. With nothing loaded, all of them show.
+
+The observed statement is typed from the likelihood, so it reads `Alignment<Character>` rather than
+`Alignment`, and `PhyloBM` would read `Alignment<Real>`.
+
+One limitation runs the other way: `fromNexus` and `fromFasta` always produce `Alignment<Character>`
+whatever the file says, so a likelihood cannot ask for the *kind* of discrete data it needs. SNAPP
+wants biallelic SNPs and has to settle for `Alignment<Character>`; declaring it over an
+`Alignment<Binary>` makes it unobservable from any loader PhyloSpec has.
+
 ## Engine component libraries
 
 An engine implements some of PhyloSpec and adds components of its own, so `--library` loads one or
@@ -80,8 +110,8 @@ more further component libraries beside core. Nothing else changes: they are ord
 component-library JSON, registered after core so they can refer to core types, and their namespaces
 are imported so the parser resolves their names.
 
-`libraries/beast28.json` is a hand-written sample covering two BEAST 2.8 packages — BICEPS
-(`BICEPS`, `YuleSkyline`) and bModelTest. **No UI code names any of them, and the library declares
+`libraries/beast28.json` is a hand-written sample covering BEAST 2.8 packages — BICEPS (`BICEPS`,
+`YuleSkyline`), bModelTest, and a SNAPP likelihood. **No UI code names any of them, and the library declares
 no roles.** A component reaches a tab by what it produces:
 
 | Role | Filled by | Tab |

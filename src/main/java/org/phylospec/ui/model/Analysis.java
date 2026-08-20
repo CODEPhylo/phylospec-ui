@@ -8,6 +8,7 @@ import javafx.beans.property.StringProperty;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 
+import org.phylospec.components.Argument;
 import org.phylospec.components.Generator;
 import org.phylospec.ui.spec.Library;
 
@@ -40,6 +41,7 @@ public final class Analysis {
     private final Component siteRates;
     private final Component clockModel;
     private final Component treePrior;
+    private final Component likelihood;
 
     private final StringProperty treeName = new SimpleStringProperty("tree");
     private final StringProperty chainLength = new SimpleStringProperty("10000000");
@@ -53,6 +55,7 @@ public final class Analysis {
         this.siteRates = Component.estimable(library);
         this.clockModel = Component.estimable(library);
         this.treePrior = Component.estimable(library);
+        this.likelihood = Component.estimable(library);
         applyDefaults();
     }
 
@@ -61,6 +64,7 @@ public final class Analysis {
         select(substitutionModel, "hky");
         select(clockModel, "StrictClock");
         select(treePrior, "Yule");
+        select(likelihood, "PhyloCTMC");
 
         // BEAUti fixes the clock rate at 1.0 by default so the tree is scaled in substitutions.
         Param clockRate = clockModel.param("clockRate");
@@ -99,7 +103,31 @@ public final class Analysis {
 
     /** Everything the library offers for a tab, the familiar ones first. */
     public List<Generator> choicesFor(String role) {
-        return library.withRole(role, PREFERRED.getOrDefault(role, List.of()));
+        List<Generator> found = library.withRole(role, PREFERRED.getOrDefault(role, List.of()));
+        return Library.TREE_LIKELIHOOD.equals(role) ? observableAsTheData(found) : found;
+    }
+
+    /**
+     * Likelihoods that could actually be observed as the data that is loaded. An observation is
+     * invariant in PhyloSpec — an {@code Alignment<Real>} cannot be observed as an
+     * {@code Alignment<Character>} — so a likelihood over the wrong kind of data is not a choice
+     * the user could make, it is a script that will not validate. PhyloBM and PhyloOU are the cases:
+     * they model continuous traits, and no alignment loader produces those.
+     */
+    private List<Generator> observableAsTheData(List<Generator> candidates) {
+        String observed = elementOfTheData();
+        if (observed == null) return candidates;
+        return candidates.stream()
+                .filter(candidate -> observed.equals(
+                        Library.element(Library.inner(candidate.getGeneratedType()))))
+                .toList();
+    }
+
+    /** What the first partition's loader produces, read from the library rather than assumed. */
+    private String elementOfTheData() {
+        if (partitions.isEmpty()) return null;
+        List<Generator> loaders = library.overloads(partitions.get(0).loader());
+        return loaders.isEmpty() ? null : Library.element(loaders.get(0).getGeneratedType());
     }
 
     /**
@@ -109,7 +137,7 @@ public final class Analysis {
      */
     public List<Param> estimatedParams() {
         List<Param> estimated = new java.util.ArrayList<>();
-        for (Component component : List.of(substitutionModel, siteRates, clockModel, treePrior)) {
+        for (Component component : components()) {
             collectEstimated(component, estimated);
         }
         return estimated;
@@ -148,6 +176,40 @@ public final class Analysis {
 
     public Component treePrior() {
         return treePrior;
+    }
+
+    /**
+     * The distribution the alignments are drawn from. Everything else on the tabs exists to supply
+     * one of its arguments, which is why choosing it decides what the other tabs are for: a
+     * likelihood with no {@code qMatrix} argument has no site model to set.
+     */
+    public Component likelihood() {
+        return likelihood;
+    }
+
+    /** Every model slot, in the order their statements are written. */
+    public List<Component> components() {
+        return List.of(substitutionModel, siteRates, clockModel, treePrior, likelihood);
+    }
+
+    /** True if the chosen likelihood takes an argument of this name, so its chooser is worth showing. */
+    public boolean likelihoodTakes(String argument) {
+        return argumentOfLikelihood(argument) != null;
+    }
+
+    /** True if it not only takes that argument but requires it, so the chooser offers no "None". */
+    public boolean likelihoodNeeds(String argument) {
+        Argument declared = argumentOfLikelihood(argument);
+        return declared != null && Boolean.TRUE.equals(declared.getRequired());
+    }
+
+    private Argument argumentOfLikelihood(String argument) {
+        Generator chosen = likelihood.generator();
+        if (chosen == null) return null;
+        return chosen.getArguments().stream()
+                .filter(a -> argument.equals(a.getName()))
+                .findFirst()
+                .orElse(null);
     }
 
     public StringProperty treeNameProperty() {

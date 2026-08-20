@@ -350,7 +350,7 @@ public final class Library {
      * The element type of a generic type, with the type properties dropped:
      * {@code "Vector<Rate; num=tree.numBranches>"} to {@code "Rate"}.
      */
-    static String element(String type) {
+    public static String element(String type) {
         String inner = inner(type);
         if (inner == null) return null;
         String first = inner.split(";", 2)[0].trim();

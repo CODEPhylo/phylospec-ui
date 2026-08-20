@@ -58,6 +58,9 @@ public final class ScriptReader {
 
     private final Set<String> claimed = new LinkedHashSet<>();
 
+    /** Whether a likelihood has been read, so that a second one can be compared against it. */
+    private boolean sawLikelihood;
+
     private ScriptReader(Library library) {
         this.library = library;
     }
@@ -88,10 +91,13 @@ public final class ScriptReader {
             }
         }
 
-        // The tabs' defaults have to be cleared, or a script that leaves out a clock or rate
-        // heterogeneity would come back with the default one still selected.
+        // The tabs' defaults have to be cleared, or a script that leaves out a clock, rate
+        // heterogeneity or — since the likelihood became a choice — a rate matrix would come back
+        // with the default one still selected.
+        analysis.substitutionModel().generatorProperty().set(null);
         analysis.siteRates().generatorProperty().set(null);
         analysis.clockModel().generatorProperty().set(null);
+        analysis.likelihood().generatorProperty().set(null);
 
         boolean sawModel = false;
         for (Stmt statement : statements) {
@@ -105,6 +111,7 @@ public final class ScriptReader {
         }
 
         if (analysis.partitions().isEmpty()) throw new Unsupported("The script loads no alignment.");
+        if (!sawLikelihood) throw new Unsupported("No alignment is observed under a likelihood.");
         if (!sawModel) throw new Unsupported("The script has no substitution model or tree prior.");
 
         for (String name : intermediates.keySet()) {
@@ -190,9 +197,23 @@ public final class ScriptReader {
             return true;
         }
 
-        // The PhyloCTMC is written from the shape of the analysis, so there is nothing to read back
-        // from it beyond the fact that it is there.
-        if (statement instanceof Stmt.ObservedAs) return false;
+        // An observed draw is the likelihood. Every partition is written from the same one, so a
+        // script that gives them different likelihoods says something the tabs cannot hold.
+        if (statement instanceof Stmt.ObservedAs observed) {
+            if (!(observed.stmt instanceof Stmt.Draw draw)) {
+                throw new Unsupported("An observed value must be drawn from a distribution.");
+            }
+            Expr.Call call = callOf(draw.expression, draw.name);
+            Generator chosen = overloadFor(call);
+            Generator already = analysis.likelihood().generator();
+            if (already != null && sawLikelihood && already != chosen) {
+                throw new Unsupported("The partitions are observed under different likelihoods, "
+                        + "which the tabs cannot express: they share one.");
+            }
+            bind(analysis.likelihood(), call, true);
+            sawLikelihood = true;
+            return true;
+        }
 
         if (statement instanceof Stmt.Draw draw) {
             Expr.Call call = callOf(draw.expression, draw.name);
