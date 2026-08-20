@@ -124,6 +124,19 @@ reference works; one that nothing refers to is refused, since the tabs have nowh
 A distribution-valued argument is left where it is written — `RelaxedClock(base=LogNormal(...))` has
 no spelling as a statement.
 
+### Vector lengths
+
+A vector-valued argument is as long as the library's `dimension` says it is, as a literal and in the
+prior it is drawn from — a Dirichlet drawing a six-element simplex is given six concentrations, and
+nothing on the Dirichlet's side of the library could know that. A `dimension` written as an
+expression rather than a number (`tree.numBranches`) is left alone: those arguments are wired by the
+writer from the shape of the analysis.
+
+Where no dimension is declared the length falls back to four, which is right for nucleotide
+frequencies and a guess otherwise. Core declares none, and that shows: `wag`, `jtt` and `lg` take a
+`Simplex baseFrequencies` of **twenty**, and get four. Adding `dimension` to those three in core
+would fix it, here and in every other tool reading the library.
+
 ### bModelTest
 
 Worth noting how it decomposes, because it is not what it looks like. bModelTest is not a

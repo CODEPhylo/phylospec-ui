@@ -301,6 +301,48 @@ class EngineLibraryTest {
         assertEquals(script, ScriptWriter.write(ScriptReader.read(withBeast, script)));
     }
 
+    /**
+     * A vector-valued argument is as long as the library says it is — both as a literal and in the
+     * prior it is drawn from. Nothing on the Dirichlet's side of the library can know that the
+     * simplex it is drawing has six elements rather than four, so the argument has to say.
+     */
+    @Test
+    void aDeclaredDimensionSizesBothTheValueAndItsPrior() {
+        Component substitution = analysisWithData(withBeast).substitutionModel();
+        substitution.generatorProperty().set(withBeast.overloads("nucleotideModel").get(0));
+
+        Param rates = substitution.param("rates");
+        assertEquals(6, rates.dimension());
+        assertEquals("[1.0, 1.0, 1.0, 1.0, 1.0, 1.0]",
+                rates.priorProperty().get().param("concentration").valueProperty().get());
+
+        // The literal is what the tab shows once "estimate" is unticked.
+        rates.estimateProperty().set(false);
+        assertEquals("[0.166667, 0.166667, 0.166667, 0.166667, 0.166667, 0.166667]",
+                rates.valueProperty().get());
+
+        Param freq = substitution.param("freq");
+        assertEquals(4, freq.dimension());
+        freq.estimateProperty().set(false);
+        assertEquals("[0.25, 0.25, 0.25, 0.25]", freq.valueProperty().get());
+    }
+
+    /**
+     * Core declares no dimensions, so its vector arguments keep the four-element default. That is
+     * right for nucleotide frequencies and wrong for the amino acid models, whose baseFrequencies
+     * is a Simplex of twenty — a gap in core rather than here, and the reason this test names it.
+     */
+    @Test
+    void anUndeclaredDimensionFallsBackToFour() {
+        Component substitution = analysisWithData(core).substitutionModel();
+        substitution.generatorProperty().set(core.overloads("hky").get(0));
+
+        Param frequencies = substitution.param("baseFrequencies");
+        assertEquals(null, frequencies.dimension());
+        frequencies.estimateProperty().set(false);
+        assertEquals("[0.25, 0.25, 0.25, 0.25]", frequencies.valueProperty().get());
+    }
+
     private static Analysis bModelTestAnalysis() {
         Analysis analysis = analysisWithData(withBeast);
         Component substitution = analysis.substitutionModel();

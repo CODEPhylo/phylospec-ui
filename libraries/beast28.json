@@ -178,13 +178,15 @@
             "name": "rates",
             "type": "Simplex",
             "required": true,
-            "description": "Relative rates of the GTR process."
+            "description": "Relative rates of the GTR process, one per reversible pair.",
+            "dimension": 6
           },
           {
             "name": "freq",
             "type": "Simplex",
             "required": true,
-            "description": "Base frequencies."
+            "description": "Base frequencies, one per nucleotide.",
+            "dimension": 4
           },
           {
             "name": "meanRate",

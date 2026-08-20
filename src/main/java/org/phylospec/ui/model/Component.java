@@ -46,8 +46,20 @@ public final class Component {
 
     /** A prior: its hyperparameters are always fixed. */
     public static Component prior(Generator generator) {
+        return prior(generator, null);
+    }
+
+    /**
+     * A prior on a value whose length the library fixes. Its own vector-valued hyperparameters are
+     * built to that length: a Dirichlet drawing a six-element simplex needs six concentrations, and
+     * nothing on the Dirichlet's side of the library can say so.
+     */
+    public static Component prior(Generator generator, Integer dimension) {
         Component component = new Component(false, null);
         component.generator.set(generator);
+        if (dimension != null) {
+            component.params().forEach(param -> param.resizeTo(dimension));
+        }
         return component;
     }
 
@@ -86,7 +98,7 @@ public final class Component {
         if (param.priorProperty().get() != null) return;
         if (param.isDistributionValued() || param.isEstimated()) {
             Generator choice = library.defaultPriorFor(param.priorSupport());
-            if (choice != null) param.priorProperty().set(prior(choice));
+            if (choice != null) param.priorProperty().set(prior(choice, param.dimension()));
         } else if (param.isComponentValued()) {
             List<Generator> choices = library.producing(param.type());
             if (!choices.isEmpty()) {
