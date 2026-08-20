@@ -143,11 +143,20 @@ here, the property winning. Neither is enforced by the type resolver, checked ag
 `256f2e40` as well as the `5b5b9dc4` this is built on, so a tool that ignores them writes a
 wrong-length vector that still type-checks.
 
-Of the two, the type property looks like the one to keep. It is one mechanism rather than two for
-the same idea, it is the half a resolver could come to check, and it composes: the frequencies of an
-`mk` model are as long as the alignment has states, which `Simplex<;num=numStates(alignment)>` can
-say and a fixed integer cannot. That last one needs a `numStates` function, which core does not yet
-have.
+Of the two, the type property is the one being kept: core is moving the requirement into the
+component metadata, as `Simplex<;num=20>` on the argument and `QMatrix<;numRows=20,numCols=20>` on
+the result, with the BEAST X tile's `requireSize` checks generated from the same source rather than
+stated separately.
+
+This UI is ready for that. Running the whole suite against a core library patched to the intended
+shape — `wag`, `jtt`, `lg` at twenty, `gy94` at sixty-one, the nucleotide models at four — leaves
+every test passing: the properties are read, the literals and Dirichlet concentrations come out at
+the right length and sum to one, role inference is unaffected by properties on the result type, and
+the scripts validate and round-trip.
+
+The remaining case a fixed number cannot express is a length that depends on the data — an `mk`
+model has as many frequencies as the alignment has states. `Simplex<;num=numStates(alignment)>`
+would say it, and needs a `numStates` function that core does not yet have.
 
 A flat simplex has to sum to one: BEAST's tiling accepts a sum within 1e-6 and PhyloSpec's own
 `Simplex` asks for 1e-10, so a size that does not divide one exactly cannot just repeat a rounded

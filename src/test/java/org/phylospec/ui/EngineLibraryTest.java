@@ -331,19 +331,20 @@ class EngineLibraryTest {
     }
 
     /**
-     * Core declares no dimensions, so its vector arguments keep the four-element default. That is
-     * right for nucleotide frequencies and wrong for the amino acid models, whose baseFrequencies
-     * is a Simplex of twenty — a gap in core rather than here, and the reason this test names it.
+     * Where a library declares no length, four is the fallback: right for nucleotide frequencies and
+     * a guess otherwise. Core declares none today, so its amino acid models get four base
+     * frequencies where they need twenty — a gap in core, and one this UI already handles the moment
+     * core closes it, as {@link #aLengthMayBeWrittenEitherWay} shows.
      */
     @Test
-    void anUndeclaredDimensionFallsBackToFour() {
-        Component substitution = analysisWithData(core).substitutionModel();
-        substitution.generatorProperty().set(core.overloads("hky").get(0));
+    void anUndeclaredLengthFallsBackToFour() {
+        Argument silent = new Argument();
+        silent.setName("baseFrequencies");
+        silent.setType("Simplex");
 
-        Param frequencies = substitution.param("baseFrequencies");
-        assertEquals(null, frequencies.dimension());
-        frequencies.estimateProperty().set(false);
-        assertEquals("[0.25, 0.25, 0.25, 0.25]", frequencies.valueProperty().get());
+        Param param = new Param(silent, false);
+        assertEquals(null, param.dimension());
+        assertEquals("[0.25, 0.25, 0.25, 0.25]", param.valueProperty().get());
     }
 
     /**
