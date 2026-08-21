@@ -81,7 +81,7 @@ class ScriptWriterTest {
     void defaultAnalysisIsValid() {
         Analysis analysis = analysisWithData();
         String script = ScriptWriter.write(analysis);
-        assertEquals(List.of(), Validator.validate(library, script));
+        assertEquals(List.of(), Validator.check(library, script).all());
         assertTrue(script.contains("Tree tree ~ Yule("), script);
         assertTrue(script.contains("observed as primates"), script);
     }
@@ -92,7 +92,7 @@ class ScriptWriterTest {
         analysis.partitions().get(0).useTipDatesProperty().set(true);
         String script = ScriptWriter.write(analysis);
         assertTrue(script.contains("age=parse(delimiter=\"_\", part=2)"), script);
-        assertEquals(List.of(), Validator.validate(library, script));
+        assertEquals(List.of(), Validator.check(library, script).all());
     }
 
     /** The bundled BEAST datasets must all be readable and produce a valid script. */
@@ -121,7 +121,7 @@ class ScriptWriterTest {
             assertEquals(expected.loader(), partition.loader(), expected.file());
             assertEquals(expected.taxa(), partition.taxaProperty().get(), expected.file() + " taxa");
             assertEquals(expected.sites(), partition.sitesProperty().get(), expected.file() + " sites");
-            assertEquals(List.of(), Validator.validate(library, ScriptWriter.write(analysis)), expected.file());
+            assertEquals(List.of(), Validator.check(library, ScriptWriter.write(analysis)).all(), expected.file());
         }
     }
 
@@ -134,7 +134,7 @@ class ScriptWriterTest {
 
         assertEquals(List.of("dna", "dna2"),
                 analysis.partitions().stream().map(Partition::name).toList());
-        assertEquals(List.of(), Validator.validate(library, ScriptWriter.write(analysis)));
+        assertEquals(List.of(), Validator.check(library, ScriptWriter.write(analysis)).all());
     }
 
     /** Every combination the tabs can express must parse and type-check. */
@@ -163,7 +163,7 @@ class ScriptWriterTest {
                             }
 
                             String script = ScriptWriter.write(analysis);
-                            List<String> problems = Validator.validate(library, script);
+                            List<String> problems = Validator.check(library, script).all();
                             checked++;
                             if (!problems.isEmpty()) {
                                 failures.add(substitution + " + " + clock + " + " + treePrior
@@ -330,7 +330,7 @@ class ScriptWriterTest {
      */
     private static void check(List<String> failures, Analysis analysis, String what) {
         String script = ScriptWriter.write(analysis);
-        List<String> problems = Validator.validate(library, script);
+        List<String> problems = Validator.check(library, script).all();
         if (!problems.isEmpty()) {
             failures.add(what + " -> " + problems.get(0));
         } else if (script.contains("/*") || script.contains("has no prior")) {

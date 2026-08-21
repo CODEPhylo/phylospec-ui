@@ -44,6 +44,7 @@ class EngineLibraryTest {
     private static Library core;
     private static Library withBeast;
     private static Path alignment;
+    private static Path secondAlignment;
 
     @BeforeAll
     static void loadLibrariesAndWriteAlignment() throws IOException {
@@ -60,6 +61,24 @@ class EngineLibraryTest {
                     taxonB ACGTACGA
                     taxonC ACGTACGC
                     taxonD ACGTACGG
+                  ;
+                end;
+                """);
+
+        // A second partition over the *same* taxa. The partitions share one tree, so alignments
+        // with different taxon sets describe an analysis the resolver rightly doubts, and a test
+        // that only needs two partitions should not accidentally build one.
+        secondAlignment = directory.resolve("second.nex");
+        Files.writeString(secondAlignment, """
+                #NEXUS
+                begin data;
+                  dimensions ntax=4 nchar=8;
+                  format datatype=dna;
+                  matrix
+                    taxonA ACGTTTGT
+                    taxonB ACGTTTGA
+                    taxonC ACGTTTGC
+                    taxonD ACGTTTGG
                   ;
                 end;
                 """);
@@ -201,7 +220,7 @@ class EngineLibraryTest {
 
             String script = ScriptWriter.write(analysis);
             assertTrue(script.contains("Tree tree ~ " + treePrior + "("), script);
-            assertEquals(List.of(), Validator.validate(withBeast, script), treePrior);
+            assertEquals(List.of(), Validator.check(withBeast, script).all(), treePrior);
         }
     }
 
@@ -216,7 +235,7 @@ class EngineLibraryTest {
         assertTrue(script.contains("BModelSet modelSet = bModelSet(name=\"transitionTransversionSplit\")"),
                 script);
         assertTrue(script.contains("modelSet=modelSet"), script);
-        assertEquals(List.of(), Validator.validate(withBeast, script), script);
+        assertEquals(List.of(), Validator.check(withBeast, script).all(), script);
     }
 
     /**
@@ -241,7 +260,7 @@ class EngineLibraryTest {
         String script = ScriptWriter.write(analysis);
         assertTrue(script.contains("Integer modelIndicator ~ DiscreteUniform("), script);
         assertTrue(script.contains("upper=size(modelSet) - 1"), script);
-        assertEquals(List.of(), Validator.validate(withBeast, script), script);
+        assertEquals(List.of(), Validator.check(withBeast, script).all(), script);
     }
 
     /** The script survives a trip back onto the tabs, intermediate, indicator and all. */
@@ -301,7 +320,7 @@ class EngineLibraryTest {
         assertTrue(script.contains("Boolean useShape ~ Bernoulli("), script);
         assertTrue(script.contains("Boolean useProportionInvariable ~ Bernoulli("), script);
         assertTrue(script.contains("numSites=numSites(primates)"), script);
-        assertEquals(List.of(), Validator.validate(withBeast, script), script);
+        assertEquals(List.of(), Validator.check(withBeast, script).all(), script);
         assertEquals(script, ScriptWriter.write(ScriptReader.read(withBeast, script)));
     }
 
@@ -443,7 +462,7 @@ class EngineLibraryTest {
         assertFalse(script.contains("branchRates"), script);
         assertTrue(script.contains("~ SNAPP("), script);
         assertTrue(script.contains(") observed as primates"), script);
-        assertEquals(List.of(), Validator.validate(withBeast, script), script);
+        assertEquals(List.of(), Validator.check(withBeast, script).all(), script);
         assertEquals(script, ScriptWriter.write(ScriptReader.read(withBeast, script)));
     }
 
@@ -484,7 +503,7 @@ class EngineLibraryTest {
             String parameterisation = overload.getArguments().get(1).getName();
             String script = ScriptWriter.write(analysis);
             assertTrue(script.contains(parameterisation + "="), script);
-            assertEquals(List.of(), Validator.validate(withBeast, script), parameterisation);
+            assertEquals(List.of(), Validator.check(withBeast, script).all(), parameterisation);
 
             Analysis reloaded = ScriptReader.read(withBeast, script);
             assertEquals(overload, reloaded.likelihood().generator(), parameterisation);
@@ -500,18 +519,18 @@ class EngineLibraryTest {
     @Test
     void differingLikelihoodsAcrossPartitionsAreRefused() {
         Analysis analysis = analysisWithData(withBeast);
-        analysis.addPartition(Path.of("examples", "dna.nex"));
+        analysis.addPartition(secondAlignment);
         analysis.likelihood().generatorProperty().set(withBeast.overloads("SNAPP").get(0));
         analysis.substitutionModel().generatorProperty().set(null);
         analysis.siteRates().generatorProperty().set(null);
         analysis.clockModel().generatorProperty().set(null);
 
         String script = ScriptWriter.write(analysis);
-        assertEquals(List.of(), Validator.validate(withBeast, script), script);
+        assertEquals(List.of(), Validator.check(withBeast, script).all(), script);
 
         int last = script.lastIndexOf("theta=");
         String mixed = script.substring(0, last) + "coalescenceRate=" + script.substring(last + 6);
-        assertEquals(List.of(), Validator.validate(withBeast, mixed), "both calls must be valid");
+        assertEquals(List.of(), Validator.check(withBeast, mixed).all(), "both calls must be valid");
 
         ScriptReader.Unsupported refusal = assertThrows(ScriptReader.Unsupported.class,
                 () -> ScriptReader.read(withBeast, mixed));

@@ -30,7 +30,7 @@ cd ../phylospec && mvn -N install && mvn -pl core/java -DskipTests install
 The first of those installs phylospec's parent pom, which `phylospec-core` needs and which building
 `core/java` alone does not provide. That build needs network access to fetch the Spotless plugin.
 
-Verified against phylospec `5b5b9dc4` (14 Aug 2026), component library 1.4.0.
+Verified against phylospec `21cba006` (20 Aug 2026), component library 1.4.0.
 
 ## The tabs
 
@@ -114,8 +114,10 @@ from any loader PhyloSpec has.
 
 And SNAPP's `theta` is one value per node — `Vector<PositiveReal; num=tree.numNodes>` — which is a
 length no fixed number can express, so it gets the four-element fallback and the resolver accepts
-it. That is the same gap as the vector lengths above, seen from the other side: an advisory length
-lets a wrong-length vector through.
+it — re-checked on `21cba006`, where a twelve-taxon alignment with a four-element `theta` draws no
+complaint on either channel, because `num=tree.numNodes` is a type property rather than a
+`constraint` and nothing compares the two. That is the same gap as the vector lengths above, seen
+from the other side: an advisory length lets a wrong-length vector through.
 
 ## Engine component libraries
 
@@ -134,7 +136,7 @@ no roles.** A component reaches a tab by what it produces:
 | `siteRates` | a distribution over a vector of rates, with no tree | Site Model |
 | `clockModel` | a distribution over a vector of rates, given a tree | Clock Model |
 | `treePrior` | a distribution over a `Tree` | Tree Prior |
-| `treeLikelihood` | a distribution over an `Alignment` | not yet a tab — see below |
+| `treeLikelihood` | a distribution over an `Alignment` | Likelihood |
 | `populationFunction` | a function returning `PopulationFunction` | nested argument |
 
 For most of these the role is the generated type restated: only a substitution model returns a
@@ -147,9 +149,20 @@ doing so could only agree with it or contradict it — but for the one thing a t
 component fills a slot the UI does not have yet. A StarBEAST gene tree is a `Distribution<Tree>` and
 still does not belong on the Tree Prior tab.
 
-`role` is not in the component-library schema yet; it survives loading as an additional property. It
-would be worth adding, along with a way for an engine to declare *which core components it
-implements*, since an engine that cannot run half of core should not offer it.
+`role` is not in the component-library schema yet; it survives loading as an additional property,
+and it would be worth adding.
+
+The other half — a way for an engine to declare *which core components it implements*, since an
+engine that cannot run half of core should not offer it — now exists upstream as a separate thing
+from a component library: an **engine specification**, added in phylospec PR #61. It lists the
+generators an engine provides, each with its argument names, whether each is required, and whether
+each `canBeStochastic`. Nothing here reads one yet.
+
+Two things to know before it can be used. The specification carries no types, deliberately, so
+overloads are told apart by argument *names* alone — which does not separate the two `Coalescent`
+signatures, since they differ only in whether `populationSize` is a `PositiveReal` or a
+`PopulationFunction`. And the generated specifications are written to a git-ignored `generated`
+folder rather than published, so consuming one means building phylospec.
 
 ### Named intermediates
 
@@ -183,9 +196,15 @@ would fix it, here and in every other tool reading the library.
 
 Two spellings say this: the schema's `dimension` field on the argument, and the type language's
 `num` property — `Simplex<;num=6>` — which is already how *generated* types say it. Both are read
-here, the property winning. Neither is enforced by the type resolver, checked against phylospec
-`256f2e40` as well as the `5b5b9dc4` this is built on, so a tool that ignores them writes a
-wrong-length vector that still type-checks.
+here, the property winning. Neither is enforced by the type resolver — re-checked on `21cba006`,
+having been checked on `256f2e40` and `5b5b9dc4` before it — so a tool that ignores them writes a
+wrong-length vector that still type-checks. `ValidatorTest` asserts that gap rather than the fix, so
+it fails when the resolver starts enforcing declared lengths, which is when this UI can stop sizing
+vectors itself. That is CODEPhylo/phylospec#74, still open.
+
+What the resolver *does* check is a component's `constraints`: a comparison relating two arguments,
+such as `PhyloCTMC`'s `tree.numBranches == branchRates.num`. Seven core components carry them. See
+[Validation](#validation) for where those land, which is not where a script's refusals do.
 
 Of the two, the type property is the one being kept: core is moving the requirement into the
 component metadata, as `Simplex<;num=20>` on the argument and `QMatrix<;numRows=20,numCols=20>` on
@@ -254,7 +273,19 @@ the engine reads the files for real.
 ## Validation
 
 `Validator` runs the real `Lexer`, `Parser` and `TypeResolver` over the generated script and reports
-the first problem in the status bar. `ScriptWriterTest` generates every model the tabs can express —
+the first problem in the status bar.
+
+The resolver says what it thinks on two channels, and they mean different things. It **throws** what
+it refuses — that is a `TypeError`, and the script is wrong. It **reports** what it merely doubts on
+an event listener, which is where a contradicted `constraint` lands: the resolver could not rule the
+script out but the types say the relation does not hold, which is usually a wrong-length vector.
+`Validator.check` returns the two apart, and the status bar shows a refusal ahead of a doubt and
+does not colour a doubt as an error, since an engine may well run the script anyway.
+
+Subscribing to that second channel is worth doing rather than obvious: a UI that ignores it tells
+the user a script is valid while the resolver is saying it probably is not. It caught one on the way
+in — a test building two partitions with *different* taxon sets, which share one tree and so cannot
+both be observed under it. `ScriptWriterTest` generates every model the tabs can express —
 360 generator combinations, 89 estimate ticks, 149 prior choices and every optional argument dropped
 — and asserts that all of them parse and type-check. `EngineLibraryTest` does the same for
 `libraries/beast28.json`, and asserts on what the tabs *offer* rather than on the library's

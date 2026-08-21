@@ -329,25 +329,38 @@ public class PhyloSpecUI extends Application {
             if (current.equals(lastScript)) return;
             lastScript = current;
             script.setText(current);
-            report(Validator.validate(analysis.library(), current));
+            report(Validator.check(analysis.library(), current));
         }));
         timeline.setCycleCount(Animation.INDEFINITE);
         timeline.playFromStart();
     }
 
-    private void report(List<String> problems) {
-        status.getStyleClass().removeAll("status-ok", "status-error");
-        if (problems.isEmpty()) {
+    /**
+     * Shows what the reference implementation made of the script.
+     *
+     * <p>A refusal is shown ahead of a doubt, since a script the resolver rejects is wrong whatever
+     * else is said about it. A doubt on its own is still worth showing — a constraint the types say
+     * does not hold is usually a wrong-length vector — but it is not styled as an error, because
+     * the resolver did not refuse the script and an engine may well run it.
+     */
+    private void report(Validator.Report reported) {
+        List<String> problems = reported.problems();
+        List<String> warnings = reported.warnings();
+        List<String> shown = problems.isEmpty() ? warnings : problems;
+
+        status.getStyleClass().removeAll("status-ok", "status-error", "status-warning");
+        if (shown.isEmpty()) {
             status.setText("Script is valid.");
             status.getStyleClass().add("status-ok");
         } else {
-            String first = problems.get(0);
-            String more = problems.size() > 1 ? "  (+" + (problems.size() - 1) + " more)" : "";
-            status.setText(first + more);
-            status.getStyleClass().add("status-error");
+            String more = shown.size() > 1 ? "  (+" + (shown.size() - 1) + " more)" : "";
+            status.setText(shown.get(0) + more);
+            status.getStyleClass().add(problems.isEmpty() ? "status-warning" : "status-error");
         }
-        status.setTooltip(problems.isEmpty() ? null
-                : new javafx.scene.control.Tooltip(String.join("\n", problems)));
+
+        List<String> all = reported.all();
+        status.setTooltip(all.isEmpty() ? null
+                : new javafx.scene.control.Tooltip(String.join("\n", all)));
     }
 
     /**

@@ -301,7 +301,7 @@ class ScriptReaderTest {
         analysis.treePrior().generatorProperty().set(library.overloads("BirthDeath").get(1));
         String written = ScriptWriter.write(analysis);
         Analysis reloaded = ScriptReader.read(library, written);
-        assertEquals(List.of(), Validator.validate(library, ScriptWriter.write(reloaded)));
+        assertEquals(List.of(), Validator.check(library, ScriptWriter.write(reloaded)).all());
     }
 
     // ---------------------------------------------------------------- helpers

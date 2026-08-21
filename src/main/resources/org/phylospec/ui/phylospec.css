@@ -11,6 +11,7 @@
     -ps-line: #c8c8c8;
     -ps-accent: #2b6cb0;
     -ps-error: #a02020;
+    -ps-warning: #8a5a00;
     -ps-ok: #2f6b34;
 
     -fx-font-family: -apple-system, "Segoe UI", "Helvetica Neue", sans-serif;
@@ -142,4 +143,9 @@
 
 .status-error {
     -fx-text-fill: -ps-error;
+}
+
+/* The resolver did not refuse the script, only doubted it, so this is not the error colour. */
+.status-warning {
+    -fx-text-fill: -ps-warning;
 }
