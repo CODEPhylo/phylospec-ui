@@ -149,3 +149,9 @@
 .status-warning {
     -fx-text-fill: -ps-warning;
 }
+
+/* A component no loaded engine implements: shown, so the model is still discoverable, but not
+   selectable, with the reason and an install link in the tooltip. */
+.unsupported {
+    -fx-text-fill: -ps-muted;
+}

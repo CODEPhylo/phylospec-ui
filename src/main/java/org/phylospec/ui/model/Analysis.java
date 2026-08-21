@@ -10,6 +10,7 @@ import javafx.collections.ObservableList;
 
 import org.phylospec.components.Argument;
 import org.phylospec.components.Generator;
+import org.phylospec.ui.spec.EngineSupport;
 import org.phylospec.ui.spec.Library;
 
 /**
@@ -35,6 +36,7 @@ public final class Analysis {
             Library.TREE_PRIOR, TREE_PRIORS);
 
     private final Library library;
+    private final EngineSupport support;
 
     private final ObservableList<Partition> partitions = FXCollections.observableArrayList();
     private final Component substitutionModel;
@@ -50,12 +52,17 @@ public final class Analysis {
     private final StringProperty seed = new SimpleStringProperty("");
 
     public Analysis(Library library) {
+        this(library, EngineSupport.unclaimed());
+    }
+
+    public Analysis(Library library, EngineSupport support) {
         this.library = library;
-        this.substitutionModel = Component.estimable(library);
-        this.siteRates = Component.estimable(library);
-        this.clockModel = Component.estimable(library);
-        this.treePrior = Component.estimable(library);
-        this.likelihood = Component.estimable(library);
+        this.support = support;
+        this.substitutionModel = Component.estimable(library, support);
+        this.siteRates = Component.estimable(library, support);
+        this.clockModel = Component.estimable(library, support);
+        this.treePrior = Component.estimable(library, support);
+        this.likelihood = Component.estimable(library, support);
         applyDefaults();
     }
 
@@ -156,6 +163,11 @@ public final class Analysis {
 
     public Library library() {
         return library;
+    }
+
+    /** What the loaded engines can run. Claims nothing unless a specification was given. */
+    public EngineSupport support() {
+        return support;
     }
 
     public ObservableList<Partition> partitions() {

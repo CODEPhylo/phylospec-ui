@@ -11,6 +11,7 @@ import javafx.collections.ObservableList;
 
 import org.phylospec.components.Argument;
 import org.phylospec.components.Generator;
+import org.phylospec.ui.spec.EngineSupport;
 import org.phylospec.ui.spec.Library;
 
 /**
@@ -32,16 +33,26 @@ public final class Component {
     private final ObservableList<Param> params = FXCollections.observableArrayList();
     private final boolean argsEstimable;
     private final Library library;
+    private final EngineSupport support;
 
-    private Component(boolean argsEstimable, Library library) {
+    private Component(boolean argsEstimable, Library library, EngineSupport support) {
         this.argsEstimable = argsEstimable;
         this.library = library;
+        this.support = support;
         generator.addListener((observable, old, chosen) -> rebuild(chosen));
     }
 
     /** A component whose arguments each get an "estimate" checkbox. */
     public static Component estimable(Library library) {
-        return new Component(true, library);
+        return estimable(library, EngineSupport.unclaimed());
+    }
+
+    /**
+     * The same, but with the engines consulted over which arguments may be drawn from a
+     * distribution. An engine that cannot sample an argument should not be offered the tick.
+     */
+    public static Component estimable(Library library, EngineSupport support) {
+        return new Component(true, library, support);
     }
 
     /** A prior: its hyperparameters are always fixed. */
@@ -55,7 +66,7 @@ public final class Component {
      * nothing on the Dirichlet's side of the library can say so.
      */
     public static Component prior(Generator generator, Integer dimension) {
-        Component component = new Component(false, null);
+        Component component = new Component(false, null, EngineSupport.unclaimed());
         component.generator.set(generator);
         if (dimension != null) {
             component.params().forEach(param -> param.resizeTo(dimension));
@@ -65,7 +76,13 @@ public final class Component {
 
     /** A nested function, whose own arguments stay editable — and estimable — like its parent's. */
     public static Component nested(Generator generator, Library library, boolean argsEstimable) {
-        Component component = new Component(argsEstimable, library);
+        return nested(generator, library, argsEstimable, EngineSupport.unclaimed());
+    }
+
+    /** The same, with the engines consulted as in {@link #estimable(Library, EngineSupport)}. */
+    public static Component nested(
+            Generator generator, Library library, boolean argsEstimable, EngineSupport support) {
+        Component component = new Component(argsEstimable, library, support);
         component.generator.set(generator);
         return component;
     }
@@ -75,11 +92,22 @@ public final class Component {
         if (chosen == null) return;
         for (Argument argument : chosen.getArguments()) {
             if (WIRED.contains(argument.getName())) continue;
-            Param param = new Param(argument, argsEstimable);
+            Param param = new Param(argument, argsEstimable && canBeStochastic(chosen, argument));
             if (needsNesting(param)) param.markNested();
             attachPriors(param);
             params.add(param);
         }
+    }
+
+    /**
+     * Whether the engines allow this argument to be drawn from a distribution.
+     *
+     * <p>Only a declared no is taken as a no. Where no specification is loaded, or none of them
+     * implements the component, there is no opinion to defer to and the UI decides for itself.
+     */
+    private boolean canBeStochastic(Generator generator, Argument argument) {
+        Boolean declared = support.canBeStochastic(generator, argument.getName());
+        return declared == null || declared;
     }
 
     /**
@@ -102,7 +130,7 @@ public final class Component {
         } else if (param.isComponentValued()) {
             List<Generator> choices = library.producing(param.type());
             if (!choices.isEmpty()) {
-                param.priorProperty().set(nested(choices.get(0), library, argsEstimable));
+                param.priorProperty().set(nested(choices.get(0), library, argsEstimable, support));
             }
         }
     }

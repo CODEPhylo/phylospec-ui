@@ -14,6 +14,7 @@ mvn package
 bin/phylospec-ui                                   # empty analysis
 bin/phylospec-ui examples/Primates.nex             # with an alignment already loaded
 bin/phylospec-ui --library libraries/beast28.json  # with an engine's components as well
+bin/phylospec-ui --engine engines/beast2-2.8.0-beta4.json  # and with what that engine can run
 ```
 
 `examples/` holds the familiar BEAST 2.8 datasets — Primates, anolis, Flu, Dengue4, RSV2, dna and
@@ -152,17 +153,9 @@ still does not belong on the Tree Prior tab.
 `role` is not in the component-library schema yet; it survives loading as an additional property,
 and it would be worth adding.
 
-The other half — a way for an engine to declare *which core components it implements*, since an
-engine that cannot run half of core should not offer it — now exists upstream as a separate thing
-from a component library: an **engine specification**, added in phylospec PR #61. It lists the
-generators an engine provides, each with its argument names, whether each is required, and whether
-each `canBeStochastic`. Nothing here reads one yet.
-
-Two things to know before it can be used. The specification carries no types, deliberately, so
-overloads are told apart by argument *names* alone — which does not separate the two `Coalescent`
-signatures, since they differ only in whether `populationSize` is a `PositiveReal` or a
-`PopulationFunction`. And the generated specifications are written to a git-ignored `generated`
-folder rather than published, so consuming one means building phylospec.
+The other half, a way for an engine to declare *which core components it implements*, is a separate
+document from a component library: an **engine specification**, added in phylospec PR #61 and read
+here with `--engine`. See [What the engine can run](#what-the-engine-can-run) below.
 
 ### Named intermediates
 
@@ -252,6 +245,59 @@ sample library carries a second `Bernoulli` generating `Distribution<Boolean>`. 
 once and the declared type of each variable is what tells them apart, which is worth knowing works:
 an engine library can overload a core component rather than having to rename around it. Core gaining
 a `Distribution<Boolean>` of its own would make this one unnecessary.
+
+## What the engine can run
+
+A component library says what a component *is*. An engine specification says which of them an engine
+*implements*, and an engine implements only a subset: `engines/beast2-2.8.0-beta4.json`, generated
+from `integrations/beast3` by phylospec's own `CreateEngineSpecification`, covers 50 of core's 91
+components. Missing from it are `PhyloBM` and `PhyloOU`, `SkylineCoalescent`, `lg`, `gy94`, `mk`,
+`fromFasta` and `fromCSV`, among others. Without the specification the UI offers all of them, and the
+user finds out at run time.
+
+`--engine <file>` loads one, and it may be given more than once: a BEAST 2 package is an engine in
+its own right, a model can need several, so a component is supported if *any* loaded engine
+implements it. With no specification loaded nothing is claimed and everything is offered, which is
+what this UI did before.
+
+A component nothing implements is shown **disabled rather than hidden**, greyed, with the reason and
+the specification's own `installationInstructions` and `installationWebsite` in the tooltip. Hiding
+it would leave a user wondering why the model they read about is absent, and would make someone
+else's script unreadable here. What the tabs offer does not change; only how a choice is drawn.
+
+`canBeStochastic` says per argument whether an engine can sample it, which is better than what this
+UI did before: match the head of the argument's type against a hardcoded list of continuous types.
+Only a declared no is taken as a no, since an engine having no opinion is not the same as refusing.
+
+### Matching a component to an entry
+
+The specification records a generator's name and its argument names. It does not record types,
+deliberately. Matching is therefore: everything the library's generator asks for must be something
+the entry offers, and everything the entry marks `required` must be something the generator declares.
+
+Not equality of argument lists, because the two documents disagree in three ways that mean nothing.
+**Order**: core declares `PhyloCTMC` as `tree, qMatrix, siteRates, branchRates`, the generator emits
+`tree, qMatrix, branchRates, siteRates`, and a call names its arguments anyway. **Optionality**: core
+says an optional argument by declaring a second overload without it, while an entry says it with
+`required: false`, so BEAST 2's one `Yule` with an optional `rootAge` is both of core's `Yule`
+signatures at once. **Absence**: an argument the library declares and the entry never mentions,
+like the `siteQMatrices` of core's second `PhyloCTMC`, means this is not the component the engine
+implements.
+
+Two overloads that differ only in a type collapse onto one entry, which is
+[CODEPhylo/phylospec#73](https://github.com/CODEPhylo/phylospec/issues/73) seen in real generated
+output rather than in the abstract. Core's two `Coalescent` signatures both take `populationSize`
+and `taxa`, differing only in `PositiveReal` against `PopulationFunction`, so one entry matches both
+and nothing here can tell which BEAST 2 implements. Both are offered: refusing a model an engine can
+run is the worse of the two errors. The same collapse shows up in `exp`, which the specification
+lists twice with disagreeing `canBeStochastic`, and a yes from either is taken as a yes.
+
+The specification is committed here because none is published yet. They are written to a git-ignored
+`generated` folder, so this one was generated locally at phylospec `21cba006` and copied in. When
+they ship in a repository this copy should go.
+
+Not covered yet: the Partitions tab still offers FASTA files, and BEAST 2 does not implement
+`fromFasta`, so that is a script the engine cannot run and the UI does not yet say so.
 
 ## Opening a script
 

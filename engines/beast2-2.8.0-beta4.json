@@ -1,0 +1,526 @@
+{
+  "name" : "beast2",
+  "engineVersion" : "2.8.0-beta4",
+  "dependsOn" : [ ],
+  "generators" : [ {
+    "name" : "log",
+    "arguments" : [ {
+      "name" : "x",
+      "required" : true,
+      "canBeStochastic" : true
+    } ]
+  }, {
+    "name" : "exp",
+    "arguments" : [ {
+      "name" : "x",
+      "required" : true,
+      "canBeStochastic" : true
+    } ]
+  }, {
+    "name" : "env",
+    "arguments" : [ {
+      "name" : "variable",
+      "required" : true,
+      "canBeStochastic" : false
+    } ]
+  }, {
+    "name" : "log",
+    "arguments" : [ {
+      "name" : "x",
+      "required" : true,
+      "canBeStochastic" : false
+    }, {
+      "name" : "base",
+      "required" : false,
+      "canBeStochastic" : false
+    } ]
+  }, {
+    "name" : "exp",
+    "arguments" : [ {
+      "name" : "x",
+      "required" : true,
+      "canBeStochastic" : false
+    } ]
+  }, {
+    "name" : "sqrt",
+    "arguments" : [ {
+      "name" : "x",
+      "required" : true,
+      "canBeStochastic" : false
+    } ]
+  }, {
+    "name" : "linspace",
+    "arguments" : [ {
+      "name" : "start",
+      "required" : true,
+      "canBeStochastic" : false
+    }, {
+      "name" : "end",
+      "required" : true,
+      "canBeStochastic" : false
+    }, {
+      "name" : "num",
+      "required" : true,
+      "canBeStochastic" : false
+    } ]
+  }, {
+    "name" : "range",
+    "arguments" : [ {
+      "name" : "start",
+      "required" : true,
+      "canBeStochastic" : false
+    }, {
+      "name" : "end",
+      "required" : true,
+      "canBeStochastic" : false
+    } ]
+  }, {
+    "name" : "repeat",
+    "arguments" : [ {
+      "name" : "value",
+      "required" : true,
+      "canBeStochastic" : false
+    }, {
+      "name" : "num",
+      "required" : true,
+      "canBeStochastic" : false
+    } ]
+  }, {
+    "name" : "taxa",
+    "arguments" : [ {
+      "name" : "alignment",
+      "required" : true,
+      "canBeStochastic" : true
+    } ]
+  }, {
+    "name" : "numBranches",
+    "arguments" : [ {
+      "name" : "tree",
+      "required" : true,
+      "canBeStochastic" : true
+    } ]
+  }, {
+    "name" : "numTaxa",
+    "arguments" : [ {
+      "name" : "alignment",
+      "required" : true,
+      "canBeStochastic" : true
+    } ]
+  }, {
+    "name" : "numTaxa",
+    "arguments" : [ {
+      "name" : "tree",
+      "required" : true,
+      "canBeStochastic" : true
+    } ]
+  }, {
+    "name" : "numSites",
+    "arguments" : [ {
+      "name" : "alignment",
+      "required" : true,
+      "canBeStochastic" : true
+    } ]
+  }, {
+    "name" : "num",
+    "arguments" : [ {
+      "name" : "vector",
+      "required" : true,
+      "canBeStochastic" : false
+    } ]
+  }, {
+    "name" : "numRows",
+    "arguments" : [ {
+      "name" : "matrix",
+      "required" : true,
+      "canBeStochastic" : true
+    } ]
+  }, {
+    "name" : "numCols",
+    "arguments" : [ {
+      "name" : "matrix",
+      "required" : true,
+      "canBeStochastic" : true
+    } ]
+  }, {
+    "name" : "fromNexus",
+    "arguments" : [ {
+      "name" : "file",
+      "required" : true,
+      "canBeStochastic" : false
+    }, {
+      "name" : "age",
+      "required" : false,
+      "canBeStochastic" : true
+    }, {
+      "name" : "date",
+      "required" : false,
+      "canBeStochastic" : true
+    } ]
+  }, {
+    "name" : "fromTree",
+    "arguments" : [ {
+      "name" : "file",
+      "required" : true,
+      "canBeStochastic" : false
+    } ]
+  }, {
+    "name" : "fromNewick",
+    "arguments" : [ {
+      "name" : "newickString",
+      "required" : true,
+      "canBeStochastic" : false
+    } ]
+  }, {
+    "name" : "parse",
+    "arguments" : [ {
+      "name" : "regex",
+      "required" : true,
+      "canBeStochastic" : true
+    } ]
+  }, {
+    "name" : "parse",
+    "arguments" : [ {
+      "name" : "delimiter",
+      "required" : true,
+      "canBeStochastic" : false
+    }, {
+      "name" : "part",
+      "required" : true,
+      "canBeStochastic" : false
+    } ]
+  }, {
+    "name" : "subset",
+    "arguments" : [ {
+      "name" : "alignment",
+      "required" : true,
+      "canBeStochastic" : true
+    }, {
+      "name" : "start",
+      "required" : false,
+      "canBeStochastic" : false
+    }, {
+      "name" : "end",
+      "required" : false,
+      "canBeStochastic" : false
+    }, {
+      "name" : "codonPosition",
+      "required" : false,
+      "canBeStochastic" : false
+    } ]
+  }, {
+    "name" : "Normal",
+    "arguments" : [ {
+      "name" : "mean",
+      "required" : true,
+      "canBeStochastic" : true
+    }, {
+      "name" : "sd",
+      "required" : true,
+      "canBeStochastic" : true
+    } ]
+  }, {
+    "name" : "LogNormal",
+    "arguments" : [ {
+      "name" : "logMean",
+      "required" : true,
+      "canBeStochastic" : true
+    }, {
+      "name" : "logSd",
+      "required" : true,
+      "canBeStochastic" : true
+    } ]
+  }, {
+    "name" : "LogNormal",
+    "arguments" : [ {
+      "name" : "mean",
+      "required" : true,
+      "canBeStochastic" : true
+    }, {
+      "name" : "logSd",
+      "required" : true,
+      "canBeStochastic" : true
+    } ]
+  }, {
+    "name" : "Beta",
+    "arguments" : [ {
+      "name" : "alpha",
+      "required" : true,
+      "canBeStochastic" : true
+    }, {
+      "name" : "beta",
+      "required" : true,
+      "canBeStochastic" : true
+    } ]
+  }, {
+    "name" : "Cauchy",
+    "arguments" : [ {
+      "name" : "location",
+      "required" : true,
+      "canBeStochastic" : true
+    }, {
+      "name" : "scale",
+      "required" : true,
+      "canBeStochastic" : true
+    } ]
+  }, {
+    "name" : "DiscreteUniform",
+    "arguments" : [ {
+      "name" : "lower",
+      "required" : true,
+      "canBeStochastic" : true
+    }, {
+      "name" : "upper",
+      "required" : true,
+      "canBeStochastic" : true
+    } ]
+  }, {
+    "name" : "Exponential",
+    "arguments" : [ {
+      "name" : "rate",
+      "required" : true,
+      "canBeStochastic" : false
+    } ]
+  }, {
+    "name" : "Gamma",
+    "arguments" : [ {
+      "name" : "shape",
+      "required" : true,
+      "canBeStochastic" : true
+    }, {
+      "name" : "rate",
+      "required" : true,
+      "canBeStochastic" : true
+    } ]
+  }, {
+    "name" : "Poisson",
+    "arguments" : [ {
+      "name" : "rate",
+      "required" : true,
+      "canBeStochastic" : true
+    } ]
+  }, {
+    "name" : "Uniform",
+    "arguments" : [ {
+      "name" : "lower",
+      "required" : true,
+      "canBeStochastic" : true
+    }, {
+      "name" : "upper",
+      "required" : true,
+      "canBeStochastic" : true
+    } ]
+  }, {
+    "name" : "Dirichlet",
+    "arguments" : [ {
+      "name" : "concentration",
+      "required" : true,
+      "canBeStochastic" : true
+    } ]
+  }, {
+    "name" : "Yule",
+    "arguments" : [ {
+      "name" : "birthRate",
+      "required" : true,
+      "canBeStochastic" : true
+    }, {
+      "name" : "taxa",
+      "required" : true,
+      "canBeStochastic" : true
+    }, {
+      "name" : "rootAge",
+      "required" : false,
+      "canBeStochastic" : true
+    } ]
+  }, {
+    "name" : "BirthDeath",
+    "arguments" : [ {
+      "name" : "diversificationRate",
+      "required" : true,
+      "canBeStochastic" : true
+    }, {
+      "name" : "turnover",
+      "required" : true,
+      "canBeStochastic" : true
+    }, {
+      "name" : "samplingProbability",
+      "required" : false,
+      "canBeStochastic" : true
+    }, {
+      "name" : "taxa",
+      "required" : true,
+      "canBeStochastic" : true
+    }, {
+      "name" : "rootAge",
+      "required" : false,
+      "canBeStochastic" : true
+    } ]
+  }, {
+    "name" : "Coalescent",
+    "arguments" : [ {
+      "name" : "populationSize",
+      "required" : true,
+      "canBeStochastic" : true
+    }, {
+      "name" : "taxa",
+      "required" : true,
+      "canBeStochastic" : true
+    } ]
+  }, {
+    "name" : "constantPopulationFunction",
+    "arguments" : [ {
+      "name" : "populationSize",
+      "required" : true,
+      "canBeStochastic" : true
+    } ]
+  }, {
+    "name" : "exponentialPopulationFunction",
+    "arguments" : [ {
+      "name" : "populationSize",
+      "required" : true,
+      "canBeStochastic" : true
+    }, {
+      "name" : "growthRate",
+      "required" : true,
+      "canBeStochastic" : true
+    } ]
+  }, {
+    "name" : "StrictClock",
+    "arguments" : [ {
+      "name" : "clockRate",
+      "required" : true,
+      "canBeStochastic" : true
+    }, {
+      "name" : "tree",
+      "required" : true,
+      "canBeStochastic" : true
+    } ]
+  }, {
+    "name" : "RelaxedClock",
+    "arguments" : [ {
+      "name" : "base",
+      "required" : true,
+      "canBeStochastic" : true
+    }, {
+      "name" : "clockRate",
+      "required" : true,
+      "canBeStochastic" : true
+    }, {
+      "name" : "tree",
+      "required" : true,
+      "canBeStochastic" : true
+    } ]
+  }, {
+    "name" : "jc69",
+    "arguments" : [ ]
+  }, {
+    "name" : "k80",
+    "arguments" : [ {
+      "name" : "kappa",
+      "required" : true,
+      "canBeStochastic" : true
+    } ]
+  }, {
+    "name" : "f81",
+    "arguments" : [ {
+      "name" : "baseFrequencies",
+      "required" : true,
+      "canBeStochastic" : true
+    } ]
+  }, {
+    "name" : "hky",
+    "arguments" : [ {
+      "name" : "kappa",
+      "required" : true,
+      "canBeStochastic" : true
+    }, {
+      "name" : "baseFrequencies",
+      "required" : true,
+      "canBeStochastic" : true
+    } ]
+  }, {
+    "name" : "gtr",
+    "arguments" : [ {
+      "name" : "rateAC",
+      "required" : true,
+      "canBeStochastic" : true
+    }, {
+      "name" : "rateAG",
+      "required" : true,
+      "canBeStochastic" : true
+    }, {
+      "name" : "rateAT",
+      "required" : true,
+      "canBeStochastic" : true
+    }, {
+      "name" : "rateCG",
+      "required" : true,
+      "canBeStochastic" : true
+    }, {
+      "name" : "rateCT",
+      "required" : true,
+      "canBeStochastic" : true
+    }, {
+      "name" : "rateGT",
+      "required" : true,
+      "canBeStochastic" : true
+    }, {
+      "name" : "baseFrequencies",
+      "required" : true,
+      "canBeStochastic" : true
+    } ]
+  }, {
+    "name" : "wag",
+    "arguments" : [ {
+      "name" : "baseFrequencies",
+      "required" : false,
+      "canBeStochastic" : true
+    } ]
+  }, {
+    "name" : "jtt",
+    "arguments" : [ {
+      "name" : "baseFrequencies",
+      "required" : false,
+      "canBeStochastic" : true
+    } ]
+  }, {
+    "name" : "DiscreteGammaInv",
+    "arguments" : [ {
+      "name" : "shape",
+      "required" : true,
+      "canBeStochastic" : true
+    }, {
+      "name" : "numCategories",
+      "required" : true,
+      "canBeStochastic" : true
+    }, {
+      "name" : "invariantProportion",
+      "required" : false,
+      "canBeStochastic" : true
+    }, {
+      "name" : "numSites",
+      "required" : true,
+      "canBeStochastic" : true
+    } ]
+  }, {
+    "name" : "PhyloCTMC",
+    "arguments" : [ {
+      "name" : "tree",
+      "required" : true,
+      "canBeStochastic" : true
+    }, {
+      "name" : "qMatrix",
+      "required" : true,
+      "canBeStochastic" : true
+    }, {
+      "name" : "branchRates",
+      "required" : false,
+      "canBeStochastic" : true
+    }, {
+      "name" : "siteRates",
+      "required" : false,
+      "canBeStochastic" : true
+    } ]
+  } ],
+  "installationInstructions" : "Open the website and download BEAST 2 for your operating system.",
+  "installationWebsite" : "https://www.beast2.org/"
+}

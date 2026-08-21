@@ -1,10 +1,12 @@
 package org.phylospec.ui.panel;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import javafx.scene.Node;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.ListCell;
+import javafx.scene.control.Tooltip;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.VBox;
@@ -15,6 +17,7 @@ import org.phylospec.ui.fx.ParamRow;
 import org.phylospec.ui.model.Analysis;
 import org.phylospec.ui.model.Component;
 import org.phylospec.ui.model.Param;
+import org.phylospec.ui.spec.EngineSupport;
 import org.phylospec.ui.spec.Library;
 
 /**
@@ -52,8 +55,9 @@ public final class ComponentPanel {
         ComboBox<Generator> combo = new ComboBox<>();
         combo.getItems().setAll(candidates);
         if (choice.optional()) combo.getItems().add(0, null);
-        combo.setCellFactory(view -> cell(candidates));
-        combo.setButtonCell(cell(candidates));
+        EngineSupport support = analysis.support();
+        combo.setCellFactory(view -> cell(candidates, support));
+        combo.setButtonCell(cell(candidates, support));
         combo.setMaxWidth(Double.MAX_VALUE);
         combo.valueProperty().bindBidirectional(choice.component().generatorProperty());
 
@@ -75,16 +79,47 @@ public final class ComponentPanel {
         }
     }
 
-    private static ListCell<Generator> cell(List<Generator> among) {
+    /**
+     * One row of a chooser, greyed out and unselectable where no loaded engine implements it.
+     *
+     * <p>Disabled rather than hidden. A component an engine cannot run is still worth seeing: it
+     * says the model exists and this engine is the wrong one for it, and the tooltip says where to
+     * get an engine that is right. Hiding it would leave a user wondering why the model they read
+     * about is absent, and would make someone else's script unreadable here.
+     */
+    private static ListCell<Generator> cell(List<Generator> among, EngineSupport support) {
         return new ListCell<>() {
             @Override
             protected void updateItem(Generator item, boolean empty) {
                 super.updateItem(item, empty);
+                setDisable(false);
+                setTooltip(null);
+                getStyleClass().remove("unsupported");
+
                 if (empty) {
                     setText(null);
-                } else {
-                    setText(item == null ? "None" : Component.describe(item, among));
+                    return;
                 }
+                if (item == null) {
+                    setText("None");
+                    return;
+                }
+
+                String described = Component.describe(item, among);
+                EngineSupport.Verdict verdict = support.verdictFor(item);
+                if (verdict.supported()) {
+                    setText(described);
+                    return;
+                }
+
+                setText(described + "  (not available)");
+                setDisable(true);
+                getStyleClass().add("unsupported");
+
+                List<String> advice = new ArrayList<>();
+                advice.add(verdict.reason());
+                advice.addAll(support.installationAdvice());
+                setTooltip(new Tooltip(String.join("\n", advice)));
             }
         };
     }

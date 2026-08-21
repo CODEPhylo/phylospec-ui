@@ -44,6 +44,7 @@ import org.phylospec.ui.panel.McmcPanel;
 import org.phylospec.ui.panel.PartitionsPanel;
 import org.phylospec.ui.panel.PriorsPanel;
 import org.phylospec.ui.panel.TipDatesPanel;
+import org.phylospec.ui.spec.EngineSupport;
 import org.phylospec.ui.spec.Library;
 import org.phylospec.ui.spec.ScriptReader;
 import org.phylospec.ui.spec.ScriptWriter;
@@ -63,6 +64,7 @@ public class PhyloSpecUI extends Application {
 
     /** Names an extra component library to load beside core. */
     private static final String LIBRARY_FLAG = "--library";
+    private static final String ENGINE_FLAG = "--engine";
 
     private CommandLine commandLine;
     private Analysis analysis;
@@ -80,7 +82,8 @@ public class PhyloSpecUI extends Application {
     @Override
     public void start(Stage stage) {
         commandLine = CommandLine.parse(getParameters().getRaw());
-        analysis = new Analysis(Library.load(commandLine.libraries()));
+        analysis = new Analysis(Library.load(commandLine.libraries()),
+                EngineSupport.load(commandLine.engines()));
         loadAlignmentsNamedOnTheCommandLine();
 
         TabPane tabs = buildTabs();
@@ -119,12 +122,14 @@ public class PhyloSpecUI extends Application {
 
     /**
      * What the command line asked for: engine component libraries, given as {@code --library <file>}
-     * or {@code --library=<file>}, and alignments, given bare.
+     * or {@code --library=<file>}, engine specifications, given the same two ways as
+     * {@code --engine}, and alignments, given bare.
      */
-    private record CommandLine(List<Path> libraries, List<String> alignments) {
+    private record CommandLine(List<Path> libraries, List<Path> engines, List<String> alignments) {
 
         static CommandLine parse(List<String> raw) {
             List<Path> libraries = new ArrayList<>();
+            List<Path> engines = new ArrayList<>();
             List<String> alignments = new ArrayList<>();
             for (int i = 0; i < raw.size(); i++) {
                 String argument = raw.get(i);
@@ -132,11 +137,15 @@ public class PhyloSpecUI extends Application {
                     libraries.add(Path.of(argument.substring(LIBRARY_FLAG.length() + 1)));
                 } else if (argument.equals(LIBRARY_FLAG) && i + 1 < raw.size()) {
                     libraries.add(Path.of(raw.get(++i)));
+                } else if (argument.startsWith(ENGINE_FLAG + "=")) {
+                    engines.add(Path.of(argument.substring(ENGINE_FLAG.length() + 1)));
+                } else if (argument.equals(ENGINE_FLAG) && i + 1 < raw.size()) {
+                    engines.add(Path.of(raw.get(++i)));
                 } else if (!argument.startsWith("--")) {
                     alignments.add(argument);
                 }
             }
-            return new CommandLine(libraries, alignments);
+            return new CommandLine(libraries, engines, alignments);
         }
     }
 
