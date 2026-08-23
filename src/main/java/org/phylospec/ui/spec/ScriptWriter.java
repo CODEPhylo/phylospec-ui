@@ -138,9 +138,18 @@ public final class ScriptWriter {
 
     private static void collectHoisted(Component component, List<Param> into) {
         for (Param param : component.params()) {
-            if (!param.includeProperty().get() || param.isEstimated()) continue;
+            if (!param.includeProperty().get()) continue;
             Component nested = param.priorProperty().get();
-            if (nested == null || !isFunctionValued(param)) continue;
+            if (nested == null) continue;
+
+            // An estimated value is not hoisted, since it is drawn rather than assigned, but what
+            // its prior is built from is: a species tree's Yule takes a taxon set that is itself a
+            // call, and that call has to be declared before the draw that uses it.
+            if (param.isEstimated()) {
+                collectHoisted(nested, into);
+                continue;
+            }
+            if (!isFunctionValued(param)) continue;
             collectHoisted(nested, into);
             into.add(param);
         }
@@ -367,6 +376,9 @@ public final class ScriptWriter {
                 statements.add("// " + variable + " is estimated but has no prior — set one in the Priors tab.");
                 continue;
             }
+            // What the prior is built from is declared before the draw that uses it: a species
+            // tree's Yule takes a taxon set that is itself a call, and that call needs a name.
+            declarations(nested, slot.forPrior(), statements);
             statements.add(call(declared(param.type()) + " " + variable + " ~ ",
                     nested.name(), argsOf(nested, slot.forPrior())));
         }

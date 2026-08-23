@@ -68,7 +68,12 @@ public final class Component {
 
     /** A prior: its hyperparameters are always fixed. */
     public static Component prior(Generator generator) {
-        return prior(generator, null);
+        return prior(generator, null, null);
+    }
+
+    /** A prior whose own component-valued arguments can still be chosen from {@code library}. */
+    public static Component prior(Generator generator, Integer dimension) {
+        return prior(generator, dimension, null);
     }
 
     /**
@@ -76,8 +81,8 @@ public final class Component {
      * built to that length: a Dirichlet drawing a six-element simplex needs six concentrations, and
      * nothing on the Dirichlet's side of the library can say so.
      */
-    public static Component prior(Generator generator, Integer dimension) {
-        Component component = new Component(false, null, EngineSupport.unclaimed(), false);
+    public static Component prior(Generator generator, Integer dimension, Library library) {
+        Component component = new Component(false, library, EngineSupport.unclaimed(), false);
         component.generator.set(generator);
         if (dimension != null) {
             component.params().forEach(param -> param.resizeTo(dimension));
@@ -125,7 +130,7 @@ public final class Component {
             Component targetInner = target.priorProperty().get();
             if (targetInner == null) {
                 targetInner = source.isEstimated()
-                        ? prior(sourceInner.generator(), target.dimension())
+                        ? prior(sourceInner.generator(), target.dimension(), to.library)
                         : nested(sourceInner.generator(), to.library, to.argsEstimable, to.support);
                 target.priorProperty().set(targetInner);
             }
@@ -175,7 +180,7 @@ public final class Component {
         if (param.priorProperty().get() != null) return;
         if (param.isDistributionValued() || param.isEstimated()) {
             Generator choice = library.defaultPriorFor(param.priorSupport());
-            if (choice != null) param.priorProperty().set(prior(choice, param.dimension()));
+            if (choice != null) param.priorProperty().set(prior(choice, param.dimension(), library));
         } else if (param.isComponentValued()) {
             List<Generator> choices = library.producing(param.type());
             if (!choices.isEmpty()) {

@@ -196,6 +196,25 @@ sample every species and the species tree still spans the union. With complete s
 `species(taxa=taxa(alignment=gene1))` says the same thing. `species(taxa=...)` reduces a taxon set to
 one taxon per species, which is the half that cannot be worked around at all.
 
+Nothing above is typed. Setting one up, from an empty window:
+
+| Tab | What to do |
+|---|---|
+| Partitions | Add the alignments |
+| Tip Dates & Species | Tick "Read a species from each taxon name", and set the delimiter and part |
+| Partitions | Select every row, choose **Tree**, click **Unlink** |
+| Tree Prior | Choose `MultispeciesCoalescent` |
+| Priors | Under `speciesTree ~ Yule`, choose `species` for its taxa, then `taxa` for that |
+
+The species tree needs no tab of its own. It is an estimated `Tree` argument, so it appears on the
+Priors tab like any other estimated value, and its `Yule` is chosen there.
+
+A taxon set is a component to choose rather than a value to type, so the species set is assembled
+from the same choosers everything else uses. Underneath it, an argument that names an alignment is a
+list of the loaded partitions, and one that names several is a tick per partition, all ticked to
+begin with. That is the only thing the UI knows here that the library did not tell it: that an
+`Alignment` argument refers to a loaded partition, which is what the Partitions tab knows too.
+
 Those two are placeholders, not engine components, and the point is to delete them. `StarBeastTest`
 asserts core does *not* provide them, so the day it does, the test fails and says to remove ours
 rather than leave them shadowing core's, which is what happened with `Bernoulli`. This is

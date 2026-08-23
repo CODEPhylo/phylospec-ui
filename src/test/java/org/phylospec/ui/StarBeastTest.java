@@ -15,6 +15,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.phylospec.ui.model.Analysis;
+import org.phylospec.components.Generator;
 import org.phylospec.ui.model.Component;
 import org.phylospec.ui.model.Param;
 import org.phylospec.ui.model.Partition;
@@ -73,16 +74,37 @@ public class StarBeastTest {
         return path;
     }
 
+    /** What the derived species set comes out as, once it has been chosen rather than typed. */
+    private static final String SPECIES = "species(taxa=taxa(alignments=[gene1, gene2]))";
+
     /**
-     * The species set, derived rather than typed out.
+     * Builds the species set the way the tabs do: by choosing components, not by typing.
      *
-     * <p>Both halves of this are placeholders in {@code libraries/beast28.json} and belong in core:
-     * {@code taxa} over several alignments, so a species tree spans loci that do not all sample
-     * every species, and {@code species} over a taxon set. Until core has them a script written
-     * this way needs the engine library loaded, which is why
+     * <p>The species tree's {@code taxa} is a component to choose, so the user picks {@code species}
+     * and then the {@code taxa} that takes several alignments. Both halves are placeholders in
+     * {@code libraries/beast28.json} and belong in core, which is why
      * {@link #theSpeciesSetStillHasToComeFromTheEngineLibrary()} watches for them arriving.
      */
-    private static final String SPECIES = "species(taxa=taxa(alignments=[gene1, gene2]))";
+    private static void chooseTheSpeciesSet(Analysis analysis) {
+        Param taxa = analysis.treePrior().param("speciesTree").priorProperty().get().param("taxa");
+        assertTrue(taxa.isComponentValued(), "a taxon set is chosen, not typed");
+
+        Component species = Component.nested(overload("species", "taxa"), library, false);
+        taxa.priorProperty().set(species);
+
+        Component ofAlignments = Component.nested(overload("taxa", "alignments"), library, false);
+        species.param("taxa").priorProperty().set(ofAlignments);
+        ofAlignments.param("alignments").valueProperty().set("[gene1, gene2]");
+    }
+
+    /** The overload of {@code name} that takes an argument called {@code argument}. */
+    private static Generator overload(String name, String argument) {
+        return library.overloads(name).stream()
+                .filter(generator -> generator.getArguments().stream()
+                        .anyMatch(declared -> argument.equals(declared.getName())))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("no " + name + " taking " + argument));
+    }
 
     private static Analysis starbeast() {
         Analysis analysis = new Analysis(library);
@@ -102,9 +124,8 @@ public class StarBeastTest {
                 .set(library.overloads("MultispeciesCoalescent").get(0));
 
         // The coalescent's own taxa are the gene's, and the writer supplies those. The species
-        // tree's taxa are the species, and nothing can supply those, so they are typed in.
-        analysis.treePrior().param("speciesTree").priorProperty().get()
-                .param("taxa").valueProperty().set(SPECIES);
+        // tree's taxa are the species, and those are chosen.
+        chooseTheSpeciesSet(analysis);
         return analysis;
     }
 
@@ -180,16 +201,16 @@ public class StarBeastTest {
         Param speciesTree = analysis.treePrior().param("speciesTree");
 
         // What the Priors tab does when the user picks a distribution from the chooser.
-        Component chosen = Component.prior(library.overloads("Yule").get(0), speciesTree.dimension());
+        Component chosen = Component.prior(library.overloads("Yule").get(0), speciesTree.dimension(), library);
         speciesTree.priorProperty().set(chosen);
 
         Param taxa = chosen.param("taxa");
         assertNotNull(taxa, "a prior over a tree still has to be told which taxa it spans");
-        assertFalse(taxa.isComponentValued(), "and that is a value to type, not a component to choose");
+        assertEquals(speciesTree.dimension(), chosen.param("birthRate") == null ? null : speciesTree.dimension(),
+                "the prior keeps the length of what it is drawn at");
 
-        taxa.valueProperty().set(SPECIES);
+        chooseTheSpeciesSet(analysis);
         String script = ScriptWriter.write(analysis);
-        assertTrue(script.contains("taxa=" + SPECIES), script);
         assertEquals(List.of(), Validator.check(library, script).all(), script);
     }
 

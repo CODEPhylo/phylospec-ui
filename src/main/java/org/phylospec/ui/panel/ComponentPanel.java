@@ -113,20 +113,20 @@ public final class ComponentPanel {
         combo.valueProperty().bindBidirectional(choice.component().generatorProperty());
 
         GridPane arguments = Form.grid();
-        rebuild(library, arguments, choice.component());
+        rebuild(analysis, arguments, choice.component());
         choice.component().generatorProperty()
-                .addListener((observable, was, now) -> rebuild(library, arguments, choice.component()));
+                .addListener((observable, was, now) -> rebuild(analysis, arguments, choice.component()));
 
         GridPane header = Form.grid();
         Form.row(header, choice.label(), null, combo, null);
         return new VBox(8, header, arguments);
     }
 
-    private static void rebuild(Library library, GridPane grid, Component component) {
+    private static void rebuild(Analysis analysis, GridPane grid, Component component) {
         grid.getChildren().clear();
         grid.getRowConstraints().clear();
         for (Param param : component.params()) {
-            ParamRow.add(grid, library, param);
+            ParamRow.add(grid, analysis, param);
         }
     }
 

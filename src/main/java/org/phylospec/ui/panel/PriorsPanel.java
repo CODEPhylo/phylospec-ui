@@ -44,7 +44,7 @@ public final class PriorsPanel {
         for (Param param : estimated) {
             GridPane grid = Form.grid();
             Form.row(grid, param.label(), param.description(),
-                    ParamRow.distributionEditor(analysis.library(), param),
+                    ParamRow.distributionEditor(analysis, param),
                     null);
             Form.span(grid, Form.note(param.variableProperty().get() + " : " + param.type()));
 

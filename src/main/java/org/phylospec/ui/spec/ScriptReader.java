@@ -470,7 +470,7 @@ public final class ScriptReader {
      * its own name rather than as the species set it holds.
      */
     private Component priorFrom(Expr.Call call, Param param) {
-        Component component = Component.prior(overloadFor(call), param.dimension());
+        Component component = Component.prior(overloadFor(call), param.dimension(), library);
         bind(component, call, false);
         return component;
     }
