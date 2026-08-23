@@ -155,3 +155,9 @@
 .unsupported {
     -fx-text-fill: -ps-muted;
 }
+
+/* Names the group a form below it edits, shown only when there is more than one. */
+.group-header {
+    -fx-font-weight: bold;
+    -fx-padding: 8 0 0 0;
+}

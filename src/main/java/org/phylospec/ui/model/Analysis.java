@@ -47,6 +47,14 @@ public final class Analysis {
     private final ObservableList<Component> clockModels = FXCollections.observableArrayList();
     private final ObservableList<TreeModel> trees = FXCollections.observableArrayList();
 
+    /**
+     * The distinct tree priors, kept in step with the trees.
+     *
+     * <p>A tree prior can be shared or separated without the tree list changing at all, so a panel
+     * watching the trees alone would miss it. This is the list the Tree Prior tab watches.
+     */
+    private final ObservableList<Component> treePriors = FXCollections.observableArrayList();
+
     private final Component likelihood;
     private final StringProperty chainLength = new SimpleStringProperty("10000000");
     private final StringProperty logEvery = new SimpleStringProperty("1000");
@@ -63,6 +71,7 @@ public final class Analysis {
         this.siteModels.add(new SiteModel(library, support));
         this.clockModels.add(Component.estimable(library, support));
         this.trees.add(new TreeModel(Component.estimable(library, support)));
+        this.treePriors.add(this.trees.get(0).prior());
         this.likelihood = Component.estimable(library, support);
 
         // A partition can arrive through addPartition, through a drop on the Partitions tab, or
@@ -284,6 +293,7 @@ public final class Analysis {
     public TreeModel unlinkTree(Partition partition) {
         TreeModel tree = new TreeModel(partition.tree().prior());
         trees.add(tree);
+        refreshTreePriors();
         partition.treeProperty().set(tree);
         discardUnusedTrees();
         renameTrees();
@@ -301,12 +311,29 @@ public final class Analysis {
         Component copy = Component.estimable(library, support);
         Component.copy(tree.prior(), copy);
         tree.priorProperty().set(copy);
+        refreshTreePriors();
         return copy;
     }
 
     /** Points a tree at another tree's prior, so the two share every parameter of it. */
     public void linkTreePrior(TreeModel tree, TreeModel target) {
         tree.priorProperty().set(target.prior());
+        refreshTreePriors();
+    }
+
+    /** The partitions using a site model, in table order, for naming a group on screen. */
+    public List<Partition> partitionsUsing(SiteModel model) {
+        return partitions.stream().filter(partition -> partition.siteModel() == model).toList();
+    }
+
+    /** The partitions using a clock model. */
+    public List<Partition> partitionsUsing(Component clock) {
+        return partitions.stream().filter(partition -> partition.clockModel() == clock).toList();
+    }
+
+    /** The trees drawn from a prior, which is more than one exactly when they share parameters. */
+    public List<TreeModel> treesUsing(Component prior) {
+        return trees.stream().filter(tree -> tree.prior() == prior).toList();
     }
 
     private void discardUnusedSiteModels() {
@@ -319,9 +346,32 @@ public final class Analysis {
                 .noneMatch(partition -> partition.clockModel() == model));
     }
 
+    /** The tree priors in use, in tree order, without repeating one that two trees share. */
+    private void refreshTreePriors() {
+        List<Component> distinct = new java.util.ArrayList<>();
+        for (TreeModel tree : trees) {
+            if (distinct.stream().noneMatch(seen -> seen == tree.prior())) distinct.add(tree.prior());
+        }
+        if (!sameOrder(distinct, treePriors)) treePriors.setAll(distinct);
+    }
+
+    private static boolean sameOrder(List<Component> left, List<Component> right) {
+        if (left.size() != right.size()) return false;
+        for (int at = 0; at < left.size(); at++) {
+            if (left.get(at) != right.get(at)) return false;
+        }
+        return true;
+    }
+
+    /** The tree priors in use, one per set of trees sharing parameters. */
+    public ObservableList<Component> treePriors() {
+        return treePriors;
+    }
+
     private void discardUnusedTrees() {
         trees.removeIf(tree -> trees.size() > 1 && partitions.stream()
                 .noneMatch(partition -> partition.tree() == tree));
+        refreshTreePriors();
     }
 
     /**

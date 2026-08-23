@@ -38,6 +38,7 @@ import javafx.util.Duration;
 import org.phylospec.components.Generator;
 
 import org.phylospec.ui.model.Analysis;
+import org.phylospec.ui.model.TreeModel;
 import org.phylospec.ui.model.Component;
 import org.phylospec.ui.panel.ComponentPanel;
 import org.phylospec.ui.panel.McmcPanel;
@@ -156,16 +157,23 @@ public class PhyloSpecUI extends Application {
         priorsHost = new ScrollPane();
 
         siteModelTab = tab("Site Model", ComponentPanel.build(analysis,
-                "The substitution process, shared by every partition.",
-                List.of(
+                "The substitution process. Unlink a partition on the Partitions tab to give it one "
+                        + "of its own.",
+                analysis.siteModels(),
+                model -> model,
+                (owner, model) -> "Site model for " + named(owner.partitionsUsing(model)),
+                model -> List.of(
                         ComponentPanel.Choice.of("Substitution model",
-                                Library.SUBSTITUTION_MODEL, analysis.substitutionModel()),
+                                Library.SUBSTITUTION_MODEL, model.substitutionModel()),
                         new ComponentPanel.Choice("Site rates",
-                                Library.SITE_RATES, analysis.siteRates(), true))));
+                                Library.SITE_RATES, model.siteRates(), true))));
         clockModelTab = tab("Clock Model", ComponentPanel.build(analysis,
                 "How substitution rates vary along the branches of the tree.",
-                List.of(ComponentPanel.Choice.of("Clock model",
-                        Library.CLOCK_MODEL, analysis.clockModel()))));
+                analysis.clockModels(),
+                clock -> clock,
+                (owner, clock) -> "Clock model for " + named(owner.partitionsUsing(clock)),
+                clock -> List.of(ComponentPanel.Choice.of("Clock model",
+                        Library.CLOCK_MODEL, clock))));
 
         allTabs = List.of(
                 tab("Partitions", PartitionsPanel.build(analysis)),
@@ -179,9 +187,16 @@ public class PhyloSpecUI extends Application {
                 siteModelTab,
                 clockModelTab,
                 tab("Tree Prior", ComponentPanel.build(analysis,
-                        "The process assumed to have generated the tree.",
-                        List.of(ComponentPanel.Choice.of("Tree prior",
-                                Library.TREE_PRIOR, analysis.treePrior())))),
+                        "The process assumed to have generated the tree. Trees sharing a prior "
+                                + "share its parameters, which is how one population size is "
+                                + "estimated across several loci.",
+                        analysis.treePriors(),
+                        prior -> prior,
+                        (owner, prior) -> "Tree prior for "
+                                + String.join(", ", owner.treesUsing(prior).stream()
+                                        .map(TreeModel::name).toList()),
+                        prior -> List.of(ComponentPanel.Choice.of("Tree prior",
+                                Library.TREE_PRIOR, prior)))),
                 tab("Priors", PriorsPanel.build(analysis, priorsHost)),
                 tab("MCMC", McmcPanel.build(analysis)));
 
@@ -194,6 +209,17 @@ public class PhyloSpecUI extends Application {
             if (now != null && "Priors".equals(now.getText())) PriorsPanel.refresh(analysis, priorsHost);
         });
         return tabs;
+    }
+
+    /** Lists partitions the way a heading should read: "gene1 and gene2", or "no partition". */
+    private static String named(List<org.phylospec.ui.model.Partition> partitions) {
+        List<String> names = partitions.stream()
+                .map(org.phylospec.ui.model.Partition::name)
+                .toList();
+        if (names.isEmpty()) return "no partition yet";
+        if (names.size() == 1) return names.get(0);
+        return String.join(", ", names.subList(0, names.size() - 1))
+                + " and " + names.get(names.size() - 1);
     }
 
     /**

@@ -2,9 +2,14 @@ package org.phylospec.ui.panel;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.BiFunction;
+import java.util.function.Function;
 
+import javafx.collections.ListChangeListener;
+import javafx.collections.ObservableList;
 import javafx.scene.Node;
 import javafx.scene.control.ComboBox;
+import javafx.scene.control.Label;
 import javafx.scene.control.ListCell;
 import javafx.scene.control.Tooltip;
 import javafx.scene.control.ScrollPane;
@@ -45,6 +50,52 @@ public final class ComponentPanel {
         }
         ScrollPane scroll = new ScrollPane(body);
         scroll.setFitToWidth(true);
+        return scroll;
+    }
+
+    /**
+     * The same panel, once per group of partitions sharing a model.
+     *
+     * <p>Stacked rather than selected between. With everything linked there is one group and the
+     * panel looks exactly as it did; unlinked, every group is on the screen at once, which is what
+     * makes the sharing visible. BEAUti puts a partition list beside the form instead, which is
+     * better for many partitions and worse for seeing what is shared.
+     *
+     * @param groups   the groups themselves, watched so the panel follows a link or unlink
+     * @param shared   what a group edits, so that two groups sharing one are shown once
+     * @param headline what to call a group, given the analysis it sits in
+     * @param sections the choosers for one group
+     */
+    public static <T> Node build(Analysis analysis, String caption, ObservableList<T> groups,
+            Function<T, Object> shared, BiFunction<Analysis, T, String> headline,
+            Function<T, List<Choice>> sections) {
+        VBox body = Form.panel(Form.caption(caption));
+        ScrollPane scroll = new ScrollPane(body);
+        scroll.setFitToWidth(true);
+
+        Runnable rebuild = () -> {
+            body.getChildren().retainAll(body.getChildren().get(0));
+            // Two trees drawn from one prior are one thing to edit, not two, so groups are
+            // distinguished by what they share rather than by being separate objects.
+            List<T> distinct = new ArrayList<>();
+            for (T group : groups) {
+                if (distinct.stream().noneMatch(seen -> shared.apply(seen) == shared.apply(group))) {
+                    distinct.add(group);
+                }
+            }
+            for (T group : distinct) {
+                if (distinct.size() > 1) {
+                    Label header = new Label(headline.apply(analysis, group));
+                    header.getStyleClass().add("group-header");
+                    body.getChildren().add(header);
+                }
+                for (Choice choice : sections.apply(group)) {
+                    body.getChildren().add(section(analysis, choice));
+                }
+            }
+        };
+        rebuild.run();
+        groups.addListener((ListChangeListener<T>) change -> rebuild.run());
         return scroll;
     }
 

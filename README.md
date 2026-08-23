@@ -37,7 +37,7 @@ Verified against phylospec `21cba006` (20 Aug 2026), component library 1.4.0.
 
 | Tab | What it sets | Where it lands in the script |
 |---|---|---|
-| Partitions | Alignment files (`+`, `−`, or drag and drop) | `data` block: `fromNexus` / `fromFasta` |
+| Partitions | Alignment files (`+`, `−`, or drag and drop), and what each one shares | `data` block: `fromNexus` / `fromFasta` |
 | Tip Dates | How a sampling time is read from each taxon name | `age=` or `date=` argument, via `parse(...)` |
 | Site Model | Substitution model, and optional rate heterogeneity | `QMatrix qMatrix = ...`, `Vector<Rate> siteRates ~ ...` |
 | Clock Model | Strict or relaxed clock | `Vector<Rate> branchRates ~ ...` |
@@ -53,7 +53,7 @@ than stored separately, so the two cannot drift apart.
 ## How it is put together
 
 ```
-model/    Analysis, Partition, Component, Param   — what the user is building
+model/    Analysis, Partition, SiteModel, TreeModel, Component, Param
 spec/     Library, ScriptWriter, Validator        — the bridge to phylospec-core
 fx/       Form, ParamRow                          — layout primitives and the one param editor
 panel/    one class per tab                       — ComponentPanel serves three of them
@@ -119,6 +119,55 @@ it — re-checked on `21cba006`, where a twelve-taxon alignment with a four-elem
 complaint on either channel, because `num=tree.numNodes` is a type property rather than a
 `constraint` and nothing compares the two. That is the same gap as the vector lengths above, seen
 from the other side: an advisory length lets a wrong-length vector through.
+
+## Unlinked partitions
+
+An analysis starts with every partition sharing one site model, one clock model and one tree, which
+is BEAUti's state immediately after import. The last four columns of the Partitions tab say what
+each partition shares, and Link and Unlink over the selected rows change it, one thing at a time.
+
+Unlinking copies what was already chosen rather than starting from a default, since it is nearly
+always the prelude to changing one thing about one partition.
+
+### Trees have two levels of sharing, site models have one
+
+Two partitions can have separate trees drawn from *one* prior, and then the prior's parameters are
+estimated once across both:
+
+```
+PositiveReal populationSize ~ LogNormal(logMean=0.0, logSd=1.0)
+Tree gene1Tree ~ Coalescent(populationSize=populationSize, taxa=taxa(gene1))
+Tree gene2Tree ~ Coalescent(populationSize=populationSize, taxa=taxa(gene2))
+```
+
+That is the multi-locus coalescent, and BEAUti cannot express it without editing the XML: unlinking
+a tree there gives it a separate prior with separate parameters. Both are available here, as the
+Tree and Tree prior axes: unlink the tree to get the script above, unlink the prior as well to get
+independent population sizes.
+
+Nothing analogous applies to a site model, so it is one axis. Two rate matrices sharing a `kappa`
+would only be different matrices if something else about them differed, and nothing does.
+
+Branch rates turn out to belong to a clock model and a tree together: one clock shared by partitions
+on different trees still draws a vector per tree, because the length of the vector is the tree's.
+
+### Naming, and how the grouping is read back
+
+With everything linked the variables are the plain `qMatrix`, `siteRates`, `branchRates` and `tree`
+the writer has always used, so a linked analysis produces exactly the script it produced before any
+of this existed, byte for byte. Unlinking qualifies them by the first partition using the group:
+`gene1QMatrix`, `gene2BranchRates`, `gene1Tree`. Relinking restores the plain ones.
+
+`ScriptReader` does not trust those names, because a script it did not write will not follow them.
+It reads the grouping off the structure instead: partitions whose observations name the same
+`qMatrix` share a site model, partitions naming the same tree share a tree, and a rate matrix is
+recognised by its declared type rather than by being called `qMatrix`. So a script that calls its
+tree `t1` loads and saves unchanged.
+
+Sharing is recovered the same way. Two statements alike but for `taxa` are one distribution applied
+to two sets of taxa, so they are read back as one component, and the single `populationSize` above
+survives the round trip as a single one. Two branch-rate vectors alike but for `tree` are likewise
+one clock.
 
 ## Engine component libraries
 
@@ -359,9 +408,6 @@ engine may not read them. They are set in one place, `ScriptWriter.mcmcStatement
 
 ## Not yet supported
 
-- **Unlinked partitions, in the tabs.** The model, the writer and the reader handle partitions with
-  models of their own, including two trees sharing one prior so that a population size is estimated
-  across loci. Nothing on the tabs offers it yet, so an analysis is still linked in practice.
 - **Operators.** These have no PhyloSpec equivalent by design — they are machinery an engine chooses,
   not part of the model description — so there is no Operators tab.
 - **Starting trees and state initialisation**, for the same reason.
