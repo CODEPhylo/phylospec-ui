@@ -181,12 +181,24 @@ public final class ScriptWriter {
             if (partition.useTipDatesProperty().get()) {
                 args.add(partition.dateKindProperty().get().argument() + "=" + parseCall(partition));
             }
+            if (partition.useSpeciesProperty().get()) {
+                args.add("speciesName=" + speciesParseCall(partition));
+            }
             statements.add(call("Alignment " + partition.name() + " = ", partition.loader(), args));
         }
         if (statements.isEmpty()) {
             statements.add("// No alignment loaded — add one in the Partitions tab.");
         }
         return statements;
+    }
+
+    /** The species half of the same idea: which piece of the taxon name names the species. */
+    private static String speciesParseCall(Partition partition) {
+        List<String> args = partition.speciesParseModeProperty().get() == Partition.ParseMode.SPLIT
+                ? List.of("delimiter=" + quote(partition.speciesDelimiterProperty().get()),
+                          "part=" + partition.speciesPartProperty().get())
+                : List.of("regex=" + quote(partition.speciesRegexProperty().get()));
+        return "parse(" + String.join(", ", args) + ")";
     }
 
     private static String parseCall(Partition partition) {
@@ -258,7 +270,24 @@ public final class ScriptWriter {
      * parameters are one, the trees are not.
      */
     private record Slot(Partition data, TreeModel tree, Component clock,
-            String qMatrix, String siteRates, String branchRates) {}
+            String qMatrix, String siteRates, String branchRates, boolean structural) {
+
+        Slot(Partition data, TreeModel tree, Component clock,
+                String qMatrix, String siteRates, String branchRates) {
+            this(data, tree, clock, qMatrix, siteRates, branchRates, true);
+        }
+
+        /**
+         * The same slot, supplying nothing.
+         *
+         * <p>A prior is not one of the model's own components, so the writer has no business
+         * wiring its arguments: a Yule over an estimated species tree spans the species, not the
+         * taxa of whichever partition happens to be first.
+         */
+        Slot forPrior() {
+            return new Slot(data, tree, clock, qMatrix, siteRates, branchRates, false);
+        }
+    }
 
     /** The partition a group's structural arguments are read from: the first one using it. */
     private Partition firstPartition() {
@@ -338,7 +367,8 @@ public final class ScriptWriter {
                 statements.add("// " + variable + " is estimated but has no prior — set one in the Priors tab.");
                 continue;
             }
-            statements.add(call(declared(param.type()) + " " + variable + " ~ ", nested.name(), argsOf(nested, slot)));
+            statements.add(call(declared(param.type()) + " " + variable + " ~ ",
+                    nested.name(), argsOf(nested, slot.forPrior())));
         }
     }
 
@@ -400,6 +430,7 @@ public final class ScriptWriter {
 
     /** The expression the writer supplies for a structural argument, or null if the user owns it. */
     private String wiring(String argument, Slot slot) {
+        if (!slot.structural()) return null;
         String data = slot.data() == null ? "data" : slot.data().name();
         return switch (argument) {
             case "tree" -> slot.tree() == null ? null : slot.tree().name();

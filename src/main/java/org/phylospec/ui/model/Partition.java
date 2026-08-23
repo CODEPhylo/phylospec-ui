@@ -79,6 +79,16 @@ public final class Partition {
     private final StringProperty part = new SimpleStringProperty("2");
     private final StringProperty regex = new SimpleStringProperty("(\\d+\\.?\\d*)$");
 
+    // How the species each taxon belongs to is read from its name, which is the same shape as a
+    // tip date: an optional parser on the loader. A multispecies coalescent needs it, and nothing
+    // else does, so it is off unless asked for.
+    private final BooleanProperty useSpecies = new SimpleBooleanProperty(false);
+    private final javafx.beans.property.ObjectProperty<ParseMode> speciesParseMode =
+            new javafx.beans.property.SimpleObjectProperty<>(ParseMode.SPLIT);
+    private final StringProperty speciesDelimiter = new SimpleStringProperty("_");
+    private final StringProperty speciesPart = new SimpleStringProperty("1");
+    private final StringProperty speciesRegex = new SimpleStringProperty("^([A-Za-z]+)");
+
     // Which models this partition uses. Several partitions pointing at the same object is what
     // "linked" means; unlinking replaces the reference here with a copy of its own.
     private final javafx.beans.property.ObjectProperty<SiteModel> siteModel =
@@ -200,6 +210,27 @@ public final class Partition {
 
     public StringProperty regexProperty() {
         return regex;
+    }
+
+    /** Whether each taxon's species is read from its name, for a multispecies coalescent. */
+    public BooleanProperty useSpeciesProperty() {
+        return useSpecies;
+    }
+
+    public javafx.beans.property.ObjectProperty<ParseMode> speciesParseModeProperty() {
+        return speciesParseMode;
+    }
+
+    public StringProperty speciesDelimiterProperty() {
+        return speciesDelimiter;
+    }
+
+    public StringProperty speciesPartProperty() {
+        return speciesPart;
+    }
+
+    public StringProperty speciesRegexProperty() {
+        return speciesRegex;
     }
 
     /** The substitution process this partition uses, shared with any partition pointing at it. */

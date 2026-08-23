@@ -177,7 +177,7 @@ public class PhyloSpecUI extends Application {
 
         allTabs = List.of(
                 tab("Partitions", PartitionsPanel.build(analysis)),
-                tab("Tip Dates", TipDatesPanel.build(analysis)),
+                tab("Tip Dates & Species", TipDatesPanel.build(analysis)),
                 tab("Likelihood", ComponentPanel.build(analysis,
                         "The distribution the alignments are drawn from. Every other model tab "
                                 + "supplies one of its arguments, so this is what decides which of "

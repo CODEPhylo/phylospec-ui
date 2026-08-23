@@ -177,7 +177,33 @@ public final class ScriptReader {
         Partition partition = new Partition(Path.of(text(file, "file")));
         partition.nameProperty().set(assignment.name);
         readTipDates(partition, call);
+        readSpecies(partition, call);
         analysis.partitions().add(partition);
+    }
+
+    /** The species each taxon belongs to, read the same way a tip date is. */
+    private void readSpecies(Partition partition, Expr.Call loader) {
+        Expr species = argument(loader, "speciesName");
+        if (species == null) return;
+
+        Expr.Call parse = callOf(species, "speciesName");
+        if (!"parse".equals(parse.functionName)) {
+            throw new Unsupported("A species name must be read with parse(...), not "
+                    + parse.functionName + ".");
+        }
+        partition.useSpeciesProperty().set(true);
+
+        Expr regex = argument(parse, "regex");
+        if (regex != null) {
+            partition.speciesParseModeProperty().set(Partition.ParseMode.REGEX);
+            partition.speciesRegexProperty().set(text(regex, "regex"));
+            return;
+        }
+        partition.speciesParseModeProperty().set(Partition.ParseMode.SPLIT);
+        Expr delimiter = argument(parse, "delimiter");
+        Expr part = argument(parse, "part");
+        if (delimiter != null) partition.speciesDelimiterProperty().set(text(delimiter, "delimiter"));
+        if (part != null) partition.speciesPartProperty().set(text(part, "part"));
     }
 
     private void readTipDates(Partition partition, Expr.Call loader) {
@@ -416,7 +442,7 @@ public final class ScriptReader {
             }
             param.estimateProperty().set(true);
             param.priorProperty().set(
-                    nested(callOf(draws.get(variable.variableName).expression, param.name()), false));
+                    priorFrom(callOf(draws.get(variable.variableName).expression, param.name()), param));
             return;
         }
 
@@ -435,6 +461,20 @@ public final class ScriptReader {
     }
 
     /** A component for a nested call: a prior, a distribution-valued argument, or a function. */
+    /**
+     * A prior on an estimated value, built the way the tabs build one.
+     *
+     * <p>Not as a nested component. A nested component is given the library, which makes any
+     * argument the library can produce a slot to be filled by another component rather than a value
+     * to be typed: a Yule's {@code taxa} would come back as a component to choose and be written as
+     * its own name rather than as the species set it holds.
+     */
+    private Component priorFrom(Expr.Call call, Param param) {
+        Component component = Component.prior(overloadFor(call), param.dimension());
+        bind(component, call, false);
+        return component;
+    }
+
     private Component nested(Expr.Call call, boolean argsEstimable) {
         Component component = Component.nested(overloadFor(call), library, argsEstimable);
         bind(component, call, argsEstimable);
@@ -557,31 +597,42 @@ public final class ScriptReader {
 
     /** Renders a literal back into the text the value box would hold. */
     private static String text(Expr expression, String what) {
+        return text(expression, what, false);
+    }
+
+    /**
+     * Renders an expression as the text a value box holds.
+     *
+     * <p>A string is quoted everywhere except at the top, where the box holds the bare text and the
+     * writer quotes it back on the way out. Inside a call or a list it is part of an expression the
+     * box holds verbatim, so it keeps its quotes: {@code taxon(name="human")} that came back as
+     * {@code taxon(name=human)} would not parse, and a species set is written exactly that way.
+     */
+    private static String text(Expr expression, String what, boolean quoted) {
         if (expression instanceof Expr.Literal literal) {
-            return literal.value instanceof String string
-                    ? unescape(string)
-                    : String.valueOf(literal.value);
+            if (!(literal.value instanceof String string)) return String.valueOf(literal.value);
+            return quoted ? "\"" + string + "\"" : unescape(string);
         }
         if (expression instanceof Expr.Unary unary) {
-            return TokenType.getLexeme(unary.operator) + text(unary.right, what);
+            return TokenType.getLexeme(unary.operator) + text(unary.right, what, quoted);
         }
-        if (expression instanceof Expr.Grouping grouping) return text(grouping.expression, what);
+        if (expression instanceof Expr.Grouping grouping) return text(grouping.expression, what, quoted);
         if (expression instanceof Expr.Array array) {
             return array.elements.stream()
-                    .map(element -> text(element, what))
+                    .map(element -> text(element, what, true))
                     .collect(Collectors.joining(", ", "[", "]"));
         }
         // A value box holds free text, so an expression typed into one is rendered straight back.
         // Whitespace is normalised in the process, which is the only thing a round trip changes.
         if (expression instanceof Expr.Variable variable) return variable.variableName;
         if (expression instanceof Expr.Binary binary) {
-            return text(binary.left, what) + " " + TokenType.getLexeme(binary.operator)
-                    + " " + text(binary.right, what);
+            return text(binary.left, what, quoted) + " " + TokenType.getLexeme(binary.operator)
+                    + " " + text(binary.right, what, quoted);
         }
         if (expression instanceof Expr.Call call) {
             return call.functionName + java.util.Arrays.stream(call.arguments)
                     .map(argument -> (argument.name == null ? "" : argument.name + "=")
-                            + text(argument.expression, what))
+                            + text(argument.expression, what, true))
                     .collect(Collectors.joining(", ", "(", ")"));
         }
         throw new Unsupported("The value of " + what + " is an expression the tabs cannot edit.");

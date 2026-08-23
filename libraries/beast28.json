@@ -337,6 +337,32 @@
             "description": "Whether alleles are dominant."
           }
         ]
+      },
+      {
+        "name": "MultispeciesCoalescent",
+        "namespace": "starbeast.distributions",
+        "description": "A gene tree drawn within a species tree, as StarBEAST does. The species each taxon belongs to is carried by the taxa themselves, read from the taxon names by the loader's speciesName parser.",
+        "generatedType": "Distribution<Tree>",
+        "arguments": [
+          {
+            "name": "speciesTree",
+            "type": "Tree",
+            "required": true,
+            "description": "The species tree the gene trees are drawn within."
+          },
+          {
+            "name": "populationSize",
+            "type": "PositiveReal",
+            "required": true,
+            "description": "Effective population size, shared by every branch of the species tree."
+          },
+          {
+            "name": "taxa",
+            "type": "Taxa",
+            "required": true,
+            "description": "The taxa of the gene, whose species assignment gives the mapping."
+          }
+        ]
       }
     ]
   }

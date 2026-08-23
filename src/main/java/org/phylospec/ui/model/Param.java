@@ -164,6 +164,11 @@ public final class Param {
     private static boolean isEstimatableType(String type) {
         return switch (Library.head(type)) {
             case "Real", "PositiveReal", "Rate", "NonNegativeReal", "Age", "Probability", "Simplex" -> true;
+            // A tree can be a value the model estimates rather than the tree the data sits on: a
+            // multispecies coalescent draws its gene trees within a species tree, and that species
+            // tree is drawn from a Yule of its own. The trees the partitions are drawn on never
+            // reach here, since the writer supplies those and they are never params.
+            case "Tree" -> true;
             default -> false;
         };
     }

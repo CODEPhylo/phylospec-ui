@@ -38,7 +38,7 @@ Verified against phylospec `18f87260` (21 Aug 2026), component library 1.4.0.
 | Tab | What it sets | Where it lands in the script |
 |---|---|---|
 | Partitions | Alignment files (`+`, `−`, or drag and drop), and what each one shares | `data` block: `fromNexus` / `fromFasta` |
-| Tip Dates | How a sampling time is read from each taxon name | `age=` or `date=` argument, via `parse(...)` |
+| Tip Dates & Species | How a sampling time, and a species, are read from each taxon name | `age=`, `date=` or `speciesName=` argument, via `parse(...)` |
 | Site Model | Substitution model, and optional rate heterogeneity | `QMatrix qMatrix = ...`, `Vector<Rate> siteRates ~ ...` |
 | Clock Model | Strict or relaxed clock | `Vector<Rate> branchRates ~ ...` |
 | Likelihood | The distribution the alignments are drawn from | the `observed as` statement |
@@ -168,6 +168,38 @@ Sharing is recovered the same way. Two statements alike but for `taxa` are one d
 to two sets of taxa, so they are read back as one component, and the single `populationSize` above
 survives the round trip as a single one. Two branch-rate vectors alike but for `tree` are likewise
 one clock.
+
+## StarBEAST, and what is missing
+
+A multispecies coalescent draws each gene tree within one species tree, with the population sizes
+estimated across loci. Four things make that up, and three of them are here:
+
+- **The gene trees** are unlinked trees sharing one prior, which is the two-level sharing above used
+  for what it is for: one `MultispeciesCoalescent`, so one species tree and one population size.
+- **The species tree** is not a tree any partition is drawn on, so it is not one of the analysis's
+  trees at all. It is an estimated `Tree` argument of the coalescent, and the machinery that gives a
+  prior to any estimated value writes `Tree speciesTree ~ Yule(...)` out for it.
+- **The mapping from taxon to species** is the loader's `speciesName` parser, set on the Tip Dates
+  and Species tab beside the sampling times. It has been in core since March.
+
+The fourth is missing. The species tree has to be told which taxa it spans, and nothing can derive
+that set from the alignments, so it has to be typed in as a literal:
+
+```
+Tree speciesTree ~ Yule(
+    birthRate=1,
+    taxa=[taxon(name="human", species="human"), taxon(name="chimp", species="chimp")]
+)
+```
+
+`taxa(alignment)` gives the individuals, not the species, and `species(taxon)` is a `String` for one
+taxon rather than the set. A `speciesTaxa(alignment)` function, or `species` applied to a `Taxa`,
+would close it. That is the whole of what stands between these tabs and StarBEAST, and it is
+narrower than what CODEPhylo/phylospec#75 asks for.
+
+`libraries/beast28.json` carries a `MultispeciesCoalescent` to demonstrate this. It reaches the Tree
+Prior tab by generating a `Distribution<Tree>`, with no UI code naming it, and `StarBeastTest` puts
+the whole shape through `write -> read -> write`.
 
 ## Engine component libraries
 

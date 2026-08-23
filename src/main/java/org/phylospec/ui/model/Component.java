@@ -35,10 +35,21 @@ public final class Component {
     private final Library library;
     private final EngineSupport support;
 
-    private Component(boolean argsEstimable, Library library, EngineSupport support) {
+    /**
+     * Whether this is one of the analysis's own model slots, whose structural arguments the writer
+     * supplies from the shape of the analysis.
+     *
+     * <p>A prior is not: a Yule over an estimated species tree has to be told which taxa it spans,
+     * because no partition is drawn on that tree and nothing else can say. Neither is a nested
+     * function, for the same reason.
+     */
+    private final boolean structural;
+
+    private Component(boolean argsEstimable, Library library, EngineSupport support, boolean structural) {
         this.argsEstimable = argsEstimable;
         this.library = library;
         this.support = support;
+        this.structural = structural;
         generator.addListener((observable, old, chosen) -> rebuild(chosen));
     }
 
@@ -52,7 +63,7 @@ public final class Component {
      * distribution. An engine that cannot sample an argument should not be offered the tick.
      */
     public static Component estimable(Library library, EngineSupport support) {
-        return new Component(true, library, support);
+        return new Component(true, library, support, true);
     }
 
     /** A prior: its hyperparameters are always fixed. */
@@ -66,7 +77,7 @@ public final class Component {
      * nothing on the Dirichlet's side of the library can say so.
      */
     public static Component prior(Generator generator, Integer dimension) {
-        Component component = new Component(false, null, EngineSupport.unclaimed());
+        Component component = new Component(false, null, EngineSupport.unclaimed(), false);
         component.generator.set(generator);
         if (dimension != null) {
             component.params().forEach(param -> param.resizeTo(dimension));
@@ -82,7 +93,7 @@ public final class Component {
     /** The same, with the engines consulted as in {@link #estimable(Library, EngineSupport)}. */
     public static Component nested(
             Generator generator, Library library, boolean argsEstimable, EngineSupport support) {
-        Component component = new Component(argsEstimable, library, support);
+        Component component = new Component(argsEstimable, library, support, false);
         component.generator.set(generator);
         return component;
     }
@@ -126,7 +137,10 @@ public final class Component {
         params.clear();
         if (chosen == null) return;
         for (Argument argument : chosen.getArguments()) {
-            if (WIRED.contains(argument.getName())) continue;
+            // The writer supplies the structural arguments of the model's own components. A prior
+            // is not one of those: a Yule over an estimated species tree has to be told which taxa
+            // it spans, because no partition is drawn on it.
+            if (structural && WIRED.contains(argument.getName())) continue;
             Param param = new Param(argument, argsEstimable && canBeStochastic(chosen, argument));
             if (needsNesting(param)) param.markNested();
             attachPriors(param);

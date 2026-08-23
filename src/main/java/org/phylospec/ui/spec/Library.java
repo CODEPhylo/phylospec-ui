@@ -214,6 +214,7 @@ public final class Library {
             case "Real" -> "Normal";
             case "Integer", "NonNegativeInteger", "PositiveInteger", "Count" -> "DiscreteUniform";
             case "Boolean" -> "Bernoulli";
+            case "Tree" -> "Yule";
             default -> null;
         };
         return candidates.stream()
