@@ -294,10 +294,10 @@ class EngineLibraryTest {
      * BEAUti would draw them as checkboxes, and bModelTest samples them, so ticking "average over"
      * has to turn each into a Bernoulli draw.
      *
-     * <p>The Bernoulli it draws from is the engine library's, not core's. Core's generates a
-     * NonNegativeInteger, which cannot stand in for a Boolean switch — so the library carries an
-     * overload generating {@code Distribution<Boolean>}, and the declared type of each variable is
-     * what tells the two apart.
+     * <p>The Bernoulli it draws from is core's. It did not used to be: core's generated a
+     * NonNegativeInteger, which cannot stand in for a Boolean switch, so this library carried an
+     * overload generating {@code Distribution<Boolean>} beside it. Core gained exactly that in
+     * phylospec #76, and the overload here was removed rather than left to shadow it.
      */
     @Test
     void bModelTestSiteRatesAverageOverTheirSwitches() {
@@ -306,8 +306,10 @@ class EngineLibraryTest {
         rates.generatorProperty().set(withBeast.overloads("bSiteRates").get(0));
         rates.param("numCategories").valueProperty().set("4");
 
-        assertEquals(2, withBeast.overloads("Bernoulli").size(), "core's and the engine's");
+        assertEquals(1, withBeast.overloads("Bernoulli").size(), "core's alone, since #76");
         assertEquals("Bernoulli", withBeast.defaultPriorFor("Boolean").getName());
+        assertEquals("Distribution<Boolean>",
+                withBeast.overloads("Bernoulli").get(0).getGeneratedType());
 
         for (String switchName : List.of("useShape", "useProportionInvariable")) {
             Param flag = rates.param(switchName);

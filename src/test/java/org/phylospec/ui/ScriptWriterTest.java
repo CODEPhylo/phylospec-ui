@@ -148,13 +148,16 @@ class ScriptWriterTest {
                 for (String treePrior : Analysis.TREE_PRIORS) {
                     for (boolean gammaRates : new boolean[] {false, true}) {
                         int overloads = library.overloads(treePrior).size();
-                        for (int overload = 0; overload < overloads; overload++) {
+                        // Every overload of both, not only of the tree prior: core gained a second
+                        // gtr in #76, taking joint relativeRates, and nothing here reached it.
+                        int matrices = library.overloads(substitution).size();
+                        for (int overload = 0; overload < overloads * matrices; overload++) {
                             Analysis analysis = analysisWithData();
                             analysis.substitutionModel().generatorProperty()
-                                    .set(library.overloads(substitution).get(0));
+                                    .set(library.overloads(substitution).get(overload / overloads));
                             analysis.clockModel().generatorProperty().set(library.overloads(clock).get(0));
                             analysis.treePrior().generatorProperty()
-                                    .set(library.overloads(treePrior).get(overload));
+                                    .set(library.overloads(treePrior).get(overload % overloads));
                             if (gammaRates) {
                                 analysis.siteRates().generatorProperty()
                                         .set(library.overloads("DiscreteGammaInv").get(0));

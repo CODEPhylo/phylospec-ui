@@ -31,7 +31,7 @@ cd ../phylospec && mvn -N install && mvn -pl core/java -DskipTests install
 The first of those installs phylospec's parent pom, which `phylospec-core` needs and which building
 `core/java` alone does not provide. That build needs network access to fetch the Spotless plugin.
 
-Verified against phylospec `21cba006` (20 Aug 2026), component library 1.4.0.
+Verified against phylospec `18f87260` (21 Aug 2026), component library 1.4.0.
 
 ## The tabs
 
@@ -259,6 +259,12 @@ every test passing: the properties are read, the literals and Dirichlet concentr
 the right length and sum to one, role inference is unaffected by properties on the result type, and
 the scripts validate and round-trip.
 
+Core's second `gtr`, added in #76, is the live example. It takes the six relative rates as one
+`Simplex relativeRates` rather than as six arguments, and declares no length for it, so this UI
+writes four and draws them from a four-concentration Dirichlet. The script type-checks, because
+nothing enforces a declared length and there is no declared length to enforce. `Simplex<;num=6>` on
+that argument would fix it here and in every other tool reading the library.
+
 The remaining case a fixed number cannot express is a length that depends on the data — an `mk`
 model has as many frequencies as the alignment has states. `Simplex<;num=numStates(alignment)>`
 would say it, and needs a `numStates` function that core does not yet have.
@@ -289,11 +295,10 @@ not inferred — so a library marks one with the `indicator` widget in its `uiHi
 three: the model indicator, and the two switches on `bSiteRates` that turn gamma rates and
 invariable sites on and off, which are BEAUti's checkboxes promoted to random variables.
 
-Those two switches want a `Boolean`, and core's `Bernoulli` generates a `NonNegativeInteger`. So the
-sample library carries a second `Bernoulli` generating `Distribution<Boolean>`. Both are in scope at
-once and the declared type of each variable is what tells them apart, which is worth knowing works:
-an engine library can overload a core component rather than having to rename around it. Core gaining
-a `Distribution<Boolean>` of its own would make this one unnecessary.
+Those two switches want a `Boolean`. Core's `Bernoulli` used to generate a `NonNegativeInteger`, so
+the sample library carried a second one generating `Distribution<Boolean>` beside it, and the
+declared type of each variable told them apart. Core gained exactly that in phylospec #76, on
+21 Aug 2026, so the overload here has been removed rather than left to shadow core's.
 
 ## What the engine can run
 
@@ -381,7 +386,7 @@ Subscribing to that second channel is worth doing rather than obvious: a UI that
 the user a script is valid while the resolver is saying it probably is not. It caught one on the way
 in — a test building two partitions with *different* taxon sets, which share one tree and so cannot
 both be observed under it. `ScriptWriterTest` generates every model the tabs can express —
-360 generator combinations, 89 estimate ticks, 149 prior choices and every optional argument dropped
+396 generator combinations, 89 estimate ticks, 149 prior choices and every optional argument dropped
 — and asserts that all of them parse and type-check. `EngineLibraryTest` does the same for
 `libraries/beast28.json`, and asserts on what the tabs *offer* rather than on the library's
 contents, since the claim being tested is that no UI code names its components. It also puts the
