@@ -264,13 +264,45 @@ public final class Library {
     /** Functions that build a value of {@code type}, such as the population functions a coalescent takes. */
     public List<Generator> producing(String type) {
         String wanted = head(type);
+        String parameter = parameterOf(type);
         List<Generator> found = new ArrayList<>();
         for (List<Generator> overloads : generators.values()) {
             for (Generator generator : overloads) {
-                if (wanted.equals(head(generator.getGeneratedType()))) found.add(generator);
+                if (!wanted.equals(head(generator.getGeneratedType()))) continue;
+                if (supplies(parameterOf(generator.getGeneratedType()), parameter)) found.add(generator);
             }
         }
         return found;
+    }
+
+    /**
+     * Whether something producing {@code produced} can fill an argument wanting {@code wanted},
+     * once the head types are known to agree.
+     *
+     * <p>The parameter is what a type is <em>of</em>: a {@code Taxa<Species>} is not a
+     * {@code Taxa<Individual>}, and offering the second where the first is wanted is offering a
+     * species tree over individuals. Matching on the head alone cannot tell them apart, which makes
+     * the wrong choice a menu item that the resolver then refuses.
+     *
+     * <p>An unparameterised type on either side means there is nothing to compare, and it is
+     * offered: today no core type carries a parameter of this kind, so nothing is hidden that used
+     * to be shown.
+     */
+    private boolean supplies(String produced, String wanted) {
+        if (wanted == null || produced == null) return true;
+        return isSubtype(produced, wanted);
+    }
+
+    /**
+     * What a type is of, ignoring the properties attached to a generated type: the parameter of
+     * {@code Alignment<Character; numTaxa=4>} is {@code Character}, and
+     * {@code Taxa<;num=alignment.numTaxa>} has none.
+     */
+    static String parameterOf(String type) {
+        String inner = inner(type);
+        if (inner == null) return null;
+        String parameter = inner.split(";", 2)[0].trim();
+        return parameter.isEmpty() ? null : parameter;
     }
 
     /**
