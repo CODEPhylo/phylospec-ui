@@ -196,6 +196,24 @@ sample every species and the species tree still spans the union. With complete s
 `species(taxa=taxa(alignment=gene1))` says the same thing. `species(taxa=...)` reduces a taxon set to
 one taxon per species, which is the half that cannot be worked around at all.
 
+### The types do the narrowing
+
+`libraries/beast28.json` declares two types, `SpeciesTaxa extends Taxa` and
+`SpeciesTree extends Tree`, and a `SpeciesYule` drawn over the first to produce the second. That is
+what makes the choosers offer one thing each: the coalescent's `speciesTree` is a `SpeciesTree`, so
+the only distribution over it is `SpeciesYule`, whose taxa are a `SpeciesTaxa`, so the only thing
+that can supply them is `species`.
+
+Without it, every step offers the wrong answer beside the right one. Core's `Yule` takes any `Taxa`
+and returns any `Tree`, so a species tree could be drawn over the individuals of one alignment, and
+a gene tree could be passed to the coalescent as the species tree. Both type-check. With the types
+in place both are refused, by the resolver as well as by the menus, and `extends` is enough to say
+so: a `SpeciesTree` still works wherever a `Tree` is wanted, such as a clock model, while a plain
+tree is not accepted as a species tree.
+
+This belongs in core rather than here, as a `Taxa` and a tree parameterised by whether their tips
+are species or individuals. See CODEPhylo/phylospec#75.
+
 Nothing above is typed. Setting one up, from an empty window:
 
 | Tab | What to do |
@@ -204,7 +222,7 @@ Nothing above is typed. Setting one up, from an empty window:
 | Tip Dates & Species | Tick "Read a species from each taxon name", and set the delimiter and part |
 | Partitions | Select every row, choose **Tree**, click **Unlink** |
 | Tree Prior | Choose `MultispeciesCoalescent` |
-| Priors | Under `speciesTree ~ Yule`, choose `species` for its taxa, then `taxa` for that |
+| Priors | Under `speciesTree ~ SpeciesYule`, its taxa are already `species`; pick which alignments they come from |
 
 The species tree needs no tab of its own. It is an estimated `Tree` argument, so it appears on the
 Priors tab like any other estimated value, and its `Yule` is chosen there.

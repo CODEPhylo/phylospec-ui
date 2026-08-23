@@ -46,12 +46,23 @@ public final class Param {
     private final StringProperty variable = new SimpleStringProperty();
 
     public Param(Argument argument, boolean estimable) {
+        this(argument, estimable, null);
+    }
+
+    /**
+     * The same, with the library on hand to recognise a type by what it extends.
+     *
+     * <p>An engine's {@code SpeciesTree} is a {@code Tree}, and should be estimable for the same
+     * reason: it is a value the model infers. A list of type names could not know that, since the
+     * name is the engine's to choose.
+     */
+    public Param(Argument argument, boolean estimable, Library library) {
         this.name = argument.getName();
         this.type = argument.getType();
         this.description = argument.getDescription();
         this.required = Boolean.TRUE.equals(argument.getRequired());
         this.indicator = isIndicator(argument);
-        this.estimable = estimable && (indicator || isEstimatableType(type));
+        this.estimable = estimable && (indicator || isEstimatableType(type, library));
         this.dimension = fixedDimension(argument);
         this.value.set(defaultValue(argument, dimension));
         this.estimate.set(this.estimable && this.required);
@@ -161,7 +172,10 @@ public final class Param {
      * library are discretisation settings — gamma category counts and the like — which are chosen,
      * not inferred, so offering them a prior would be misleading.
      */
-    private static boolean isEstimatableType(String type) {
+    private static boolean isEstimatableType(String type, Library library) {
+        // A tree, or anything an engine has declared to be one.
+        if (library != null && library.isSubtype(type, "Tree")) return true;
+
         return switch (Library.head(type)) {
             case "Real", "PositiveReal", "Rate", "NonNegativeReal", "Age", "Probability", "Simplex" -> true;
             // A tree can be a value the model estimates rather than the tree the data sits on: a

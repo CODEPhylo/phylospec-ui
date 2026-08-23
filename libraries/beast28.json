@@ -14,6 +14,18 @@
         "name": "BModelSet",
         "namespace": "beast.bmodeltest",
         "description": "A named set of nucleotide substitution models to average over."
+      },
+      {
+        "name": "SpeciesTaxa",
+        "namespace": "beast.types",
+        "extends": "Taxa",
+        "description": "A taxon set holding one taxon per species rather than one per individual. A placeholder: core should distinguish these, see CODEPhylo/phylospec#75."
+      },
+      {
+        "name": "SpeciesTree",
+        "namespace": "beast.types",
+        "extends": "Tree",
+        "description": "A tree whose tips are species. Usable wherever a Tree is, but not the other way round, so a gene tree cannot be passed as one. A placeholder, as above."
       }
     ],
     "generators": [
@@ -346,7 +358,7 @@
         "arguments": [
           {
             "name": "speciesTree",
-            "type": "Tree",
+            "type": "SpeciesTree",
             "required": true,
             "description": "The species tree the gene trees are drawn within."
           },
@@ -382,13 +394,33 @@
         "name": "species",
         "namespace": "beast.functions",
         "description": "The species of a taxon set, one taxon per distinct species, read from the species each taxon carries. A placeholder: this belongs in core beside species(taxon), and should be deleted from here when CODEPhylo/phylospec#75 lands it.",
-        "generatedType": "Taxa",
+        "generatedType": "SpeciesTaxa",
         "arguments": [
           {
             "name": "taxa",
             "type": "Taxa",
             "required": true,
             "description": "The taxa to reduce to their species."
+          }
+        ]
+      },
+      {
+        "name": "SpeciesYule",
+        "namespace": "beast.distributions",
+        "description": "A Yule process over species. Core's Yule would do the job, but it takes any taxa and returns any tree, so nothing stops a species tree being drawn over individuals or a gene tree being used as one. A placeholder for what core could say with a parameterised Taxa and Tree.",
+        "generatedType": "Distribution<SpeciesTree>",
+        "arguments": [
+          {
+            "name": "birthRate",
+            "type": "PositiveReal",
+            "required": true,
+            "description": "Rate at which species give rise to species."
+          },
+          {
+            "name": "taxa",
+            "type": "SpeciesTaxa",
+            "required": true,
+            "description": "The species the tree spans."
           }
         ]
       }

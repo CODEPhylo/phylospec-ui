@@ -86,14 +86,18 @@ public class StarBeastTest {
      * {@link #theSpeciesSetStillHasToComeFromTheEngineLibrary()} watches for them arriving.
      */
     private static void chooseTheSpeciesSet(Analysis analysis) {
-        Param taxa = analysis.treePrior().param("speciesTree").priorProperty().get().param("taxa");
+        Param speciesTree = analysis.treePrior().param("speciesTree");
+        assertEquals("SpeciesYule", speciesTree.priorProperty().get().name(),
+                "the only distribution over a SpeciesTree");
+
+        Param taxa = speciesTree.priorProperty().get().param("taxa");
         assertTrue(taxa.isComponentValued(), "a taxon set is chosen, not typed");
+        assertEquals("species", taxa.priorProperty().get().name(),
+                "the only thing that produces a SpeciesTaxa");
 
-        Component species = Component.nested(overload("species", "taxa"), library, false);
-        taxa.priorProperty().set(species);
-
+        // The one choice left: which loci the species are taken from. The tab ticks them all.
         Component ofAlignments = Component.nested(overload("taxa", "alignments"), library, false);
-        species.param("taxa").priorProperty().set(ofAlignments);
+        taxa.priorProperty().get().param("taxa").priorProperty().set(ofAlignments);
         ofAlignments.param("alignments").valueProperty().set("[gene1, gene2]");
     }
 
@@ -153,7 +157,8 @@ public class StarBeastTest {
         assertNotNull(speciesTree);
         assertTrue(speciesTree.estimable(), "a Tree argument can be estimated");
         assertTrue(speciesTree.isEstimated());
-        assertEquals("Yule", speciesTree.priorProperty().get().name(), "the default prior on a tree");
+        assertEquals("SpeciesYule", speciesTree.priorProperty().get().name(),
+                "the only distribution declared over a species tree");
         assertEquals(2, analysis.trees().size(), "the gene trees, and no third tree for the species");
     }
 
@@ -163,7 +168,7 @@ public class StarBeastTest {
         String script = ScriptWriter.write(analysis);
 
         assertTrue(script.contains("speciesName=parse(delimiter=\"_\", part=1)"), script);
-        assertTrue(script.contains("Tree speciesTree ~ Yule("), script);
+        assertTrue(script.contains("SpeciesTree speciesTree ~ SpeciesYule("), script);
         assertTrue(script.contains("Tree gene1Tree ~ MultispeciesCoalescent("), script);
         assertTrue(script.contains("Tree gene2Tree ~ MultispeciesCoalescent("), script);
         assertEquals(2, count(script, "speciesTree=speciesTree"), "one species tree, both genes");
@@ -201,7 +206,7 @@ public class StarBeastTest {
         Param speciesTree = analysis.treePrior().param("speciesTree");
 
         // What the Priors tab does when the user picks a distribution from the chooser.
-        Component chosen = Component.prior(library.overloads("Yule").get(0), speciesTree.dimension(), library);
+        Component chosen = Component.prior(library.overloads("SpeciesYule").get(0), speciesTree.dimension(), library);
         speciesTree.priorProperty().set(chosen);
 
         Param taxa = chosen.param("taxa");
@@ -225,7 +230,10 @@ public class StarBeastTest {
     @Test
     void anAlignmentArgumentNamesALoadedPartition() {
         Analysis analysis = starbeast();
-        Param taxa = analysis.treePrior().param("speciesTree").priorProperty().get().param("taxa");
+        // The taxa that species() reduces, which is where an alignment is named. The set above it
+        // is a SpeciesTaxa, and a plain Taxa is no longer allowed to stand there.
+        Param taxa = analysis.treePrior().param("speciesTree").priorProperty().get()
+                .param("taxa").priorProperty().get().param("taxa");
 
         Component ofOneAlignment = Component.nested(overload("taxa", "alignment"), library, false);
         taxa.priorProperty().set(ofOneAlignment);
