@@ -215,6 +215,31 @@ public class StarBeastTest {
     }
 
     /**
+     * An alignment argument names a loaded partition, and is a value rather than a component.
+     *
+     * <p>The library can produce an {@code Alignment}, since a loader does, so it would otherwise
+     * be offered as a component to build: the user would be asked to load the same file a second
+     * time. Worse, the tab writes the partition's name into the value while the writer would read
+     * the component, so the script referred to a variable nothing declared.
+     */
+    @Test
+    void anAlignmentArgumentNamesALoadedPartition() {
+        Analysis analysis = starbeast();
+        Param taxa = analysis.treePrior().param("speciesTree").priorProperty().get().param("taxa");
+
+        Component ofOneAlignment = Component.nested(overload("taxa", "alignment"), library, false);
+        taxa.priorProperty().set(ofOneAlignment);
+
+        Param alignment = ofOneAlignment.param("alignment");
+        assertFalse(alignment.isComponentValued(), "a partition is named, not built");
+
+        alignment.valueProperty().set("gene1");
+        String script = ScriptWriter.write(analysis);
+        assertTrue(script.contains("taxa(alignment=gene1)"), script);
+        assertEquals(List.of(), Validator.check(library, script).all(), script);
+    }
+
+    /**
      * The canary for CODEPhylo/phylospec#75. Core cannot derive a species set today, so the two
      * functions that do it are carried in the sample engine library. When core gains them this
      * fails, and the placeholders should be deleted rather than left to shadow core's, which is

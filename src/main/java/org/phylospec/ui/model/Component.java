@@ -190,6 +190,11 @@ public final class Component {
     }
 
     private boolean needsNesting(Param param) {
+        // An alignment argument names a partition that is already loaded, never a call. The library
+        // can produce one, since a loader does, but offering fromNexus here would ask the user to
+        // load the same file twice.
+        if ("Alignment".equals(Library.head(param.type()))) return false;
+
         return library != null
                 && !Library.hasLiteralSyntax(param.type())
                 && !library.producing(param.type()).isEmpty();
