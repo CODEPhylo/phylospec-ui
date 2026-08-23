@@ -1,6 +1,7 @@
 package org.phylospec.ui;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -14,6 +15,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.phylospec.ui.model.Analysis;
+import org.phylospec.ui.model.Component;
 import org.phylospec.ui.model.Param;
 import org.phylospec.ui.model.Partition;
 import org.phylospec.ui.spec.Library;
@@ -161,6 +163,34 @@ public class StarBeastTest {
         assertEquals("1", reloaded.partitions().get(0).speciesPartProperty().get());
         assertSame(reloaded.trees().get(0).prior(), reloaded.trees().get(1).prior(),
                 "both gene trees still share the one coalescent");
+    }
+
+    /**
+     * Changing the prior on the Priors tab must build a prior, not a nested component.
+     *
+     * <p>The chooser used to build what the tabs build for a function-valued argument, which is
+     * given the library. That turns any argument the library can produce into a slot to fill: the
+     * species tree's Yule lost its typed-in {@code taxa} and wrote {@code taxa=taxa}, naming a
+     * variable that was never declared. A prior also carries the length of the value it is drawn
+     * from, which the same path dropped.
+     */
+    @Test
+    void changingThePriorKeepsItAPrior() {
+        Analysis analysis = starbeast();
+        Param speciesTree = analysis.treePrior().param("speciesTree");
+
+        // What the Priors tab does when the user picks a distribution from the chooser.
+        Component chosen = Component.prior(library.overloads("Yule").get(0), speciesTree.dimension());
+        speciesTree.priorProperty().set(chosen);
+
+        Param taxa = chosen.param("taxa");
+        assertNotNull(taxa, "a prior over a tree still has to be told which taxa it spans");
+        assertFalse(taxa.isComponentValued(), "and that is a value to type, not a component to choose");
+
+        taxa.valueProperty().set(SPECIES);
+        String script = ScriptWriter.write(analysis);
+        assertTrue(script.contains("taxa=" + SPECIES), script);
+        assertEquals(List.of(), Validator.check(library, script).all(), script);
     }
 
     /**

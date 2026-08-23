@@ -33,7 +33,8 @@ public final class ParamRow {
     /** Adds the row (and, for distribution-valued arguments, its nested editor) to {@code grid}. */
     public static void add(GridPane grid, Library library, Param param) {
         Node control = param.isComponentValued()
-                ? componentEditor(library, candidatesFor(library, param), param.priorProperty())
+                ? componentEditor(library, candidatesFor(library, param), param.priorProperty(),
+                        chosen -> Component.nested(chosen, library, false))
                 : valueField(param);
 
         HBox trailing = new HBox(8);
@@ -82,9 +83,19 @@ public final class ParamRow {
                 : library.producing(param.type());
     }
 
-    /** A distribution chooser over the distributions that can serve as a prior on {@code support}. */
-    public static Node distributionEditor(Library library, String support, ObjectProperty<Component> holder) {
-        return componentEditor(library, library.priorsFor(support), holder);
+    /**
+     * A distribution chooser over the distributions that can serve as a prior on {@code param}.
+     *
+     * <p>What it builds when the user picks one has to be a prior, not a nested component. A nested
+     * component is given the library, which turns any argument the library can produce into a slot
+     * to fill rather than a value to type: a Yule's {@code taxa} would become a component chooser,
+     * and the script would refer to a variable that was never declared. A prior also carries the
+     * length of the value it is drawn from, so a Dirichlet over a twenty-element simplex keeps its
+     * twenty concentrations when the user changes their mind about the distribution.
+     */
+    public static Node distributionEditor(Library library, Param param) {
+        return componentEditor(library, library.priorsFor(param.priorSupport()), param.priorProperty(),
+                chosen -> Component.prior(chosen, param.dimension()));
     }
 
     /**
@@ -92,7 +103,8 @@ public final class ParamRow {
      * on estimated values, distribution-valued arguments, and function-valued arguments alike.
      */
     public static Node componentEditor(Library library, List<Generator> candidates,
-                                       ObjectProperty<Component> holder) {
+                                       ObjectProperty<Component> holder,
+                                       java.util.function.Function<Generator, Component> make) {
         ComboBox<Generator> combo = new ComboBox<>();
         combo.getItems().setAll(candidates);
         combo.setCellFactory(view -> describeCell(candidates));
@@ -108,7 +120,7 @@ public final class ParamRow {
             if (now == null) {
                 holder.set(null);
             } else if (holder.get() == null || holder.get().generator() != now) {
-                holder.set(Component.nested(now, library, false));
+                holder.set(make.apply(now));
             }
             rebuild(library, hyperparameters, holder.get());
         });
