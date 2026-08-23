@@ -363,6 +363,34 @@
             "description": "The taxa of the gene, whose species assignment gives the mapping."
           }
         ]
+      },
+      {
+        "name": "taxa",
+        "namespace": "beast.functions",
+        "description": "The taxa of several alignments together, for a species tree that spans loci which do not all sample every species. A placeholder: this belongs in core, and should be deleted from here when CODEPhylo/phylospec#75 lands it.",
+        "generatedType": "Taxa",
+        "arguments": [
+          {
+            "name": "alignments",
+            "type": "Vector<Alignment>",
+            "required": true,
+            "description": "The alignments whose taxa are taken together."
+          }
+        ]
+      },
+      {
+        "name": "species",
+        "namespace": "beast.functions",
+        "description": "The species of a taxon set, one taxon per distinct species, read from the species each taxon carries. A placeholder: this belongs in core beside species(taxon), and should be deleted from here when CODEPhylo/phylospec#75 lands it.",
+        "generatedType": "Taxa",
+        "arguments": [
+          {
+            "name": "taxa",
+            "type": "Taxa",
+            "required": true,
+            "description": "The taxa to reduce to their species."
+          }
+        ]
       }
     ]
   }

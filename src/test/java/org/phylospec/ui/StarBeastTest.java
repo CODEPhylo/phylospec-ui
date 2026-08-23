@@ -71,9 +71,16 @@ public class StarBeastTest {
         return path;
     }
 
-    /** The species set, which nothing in the library can derive from the alignments. */
-    private static final String SPECIES =
-            "[taxon(name=\"human\", species=\"human\"), taxon(name=\"chimp\", species=\"chimp\")]";
+    /**
+     * The species set, derived rather than typed out.
+     *
+     * <p>Both halves of this are placeholders in {@code libraries/beast28.json} and belong in core:
+     * {@code taxa} over several alignments, so a species tree spans loci that do not all sample
+     * every species, and {@code species} over a taxon set. Until core has them a script written
+     * this way needs the engine library loaded, which is why
+     * {@link #theSpeciesSetStillHasToComeFromTheEngineLibrary()} watches for them arriving.
+     */
+    private static final String SPECIES = "species(taxa=taxa(alignments=[gene1, gene2]))";
 
     private static Analysis starbeast() {
         Analysis analysis = new Analysis(library);
@@ -154,6 +161,25 @@ public class StarBeastTest {
         assertEquals("1", reloaded.partitions().get(0).speciesPartProperty().get());
         assertSame(reloaded.trees().get(0).prior(), reloaded.trees().get(1).prior(),
                 "both gene trees still share the one coalescent");
+    }
+
+    /**
+     * The canary for CODEPhylo/phylospec#75. Core cannot derive a species set today, so the two
+     * functions that do it are carried in the sample engine library. When core gains them this
+     * fails, and the placeholders should be deleted rather than left to shadow core's, which is
+     * what happened with Bernoulli.
+     */
+    @Test
+    void theSpeciesSetStillHasToComeFromTheEngineLibrary() {
+        Library core = Library.load();
+
+        assertTrue(core.overloads("species").stream()
+                        .noneMatch(generator -> "Taxa".equals(generator.getGeneratedType())),
+                "core now derives a species set: delete the placeholders from beast28.json");
+        assertTrue(core.overloads("taxa").stream()
+                        .noneMatch(generator -> generator.getArguments().stream()
+                                .anyMatch(argument -> "alignments".equals(argument.getName()))),
+                "core now takes the taxa of several alignments: delete the placeholder");
     }
 
     private static int count(String text, String needle) {

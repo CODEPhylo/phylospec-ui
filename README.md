@@ -182,20 +182,24 @@ estimated across loci. Four things make that up, and three of them are here:
 - **The mapping from taxon to species** is the loader's `speciesName` parser, set on the Tip Dates
   and Species tab beside the sampling times. It has been in core since March.
 
-The fourth is missing. The species tree has to be told which taxa it spans, and nothing can derive
-that set from the alignments, so it has to be typed in as a literal:
+The fourth is missing from core. The species tree has to be told which taxa it spans, and nothing in
+core derives that set: `taxa(alignment)` gives the individuals, and `species(taxon)` is a `String`
+for one taxon rather than the set. Two overloads of functions that already exist would close it, and
+`libraries/beast28.json` carries both as placeholders so the rest can be built and tested:
 
 ```
-Tree speciesTree ~ Yule(
-    birthRate=1,
-    taxa=[taxon(name="human", species="human"), taxon(name="chimp", species="chimp")]
-)
+Tree speciesTree ~ Yule(birthRate=1, taxa=species(taxa=taxa(alignments=[gene1, gene2])))
 ```
 
-`taxa(alignment)` gives the individuals, not the species, and `species(taxon)` is a `String` for one
-taxon rather than the set. A `speciesTaxa(alignment)` function, or `species` applied to a `Taxa`,
-would close it. That is the whole of what stands between these tabs and StarBEAST, and it is
-narrower than what CODEPhylo/phylospec#75 asks for.
+`taxa(alignments=[...])` takes the taxa of several loci together, which matters when a gene does not
+sample every species and the species tree still spans the union. With complete sampling
+`species(taxa=taxa(alignment=gene1))` says the same thing. `species(taxa=...)` reduces a taxon set to
+one taxon per species, which is the half that cannot be worked around at all.
+
+Those two are placeholders, not engine components, and the point is to delete them. `StarBeastTest`
+asserts core does *not* provide them, so the day it does, the test fails and says to remove ours
+rather than leave them shadowing core's, which is what happened with `Bernoulli`. This is
+CODEPhylo/phylospec#75, and it is narrower than what that issue asks for.
 
 `libraries/beast28.json` carries a `MultispeciesCoalescent` to demonstrate this. It reaches the Tree
 Prior tab by generating a `Distribution<Tree>`, with no UI code naming it, and `StarBeastTest` puts
