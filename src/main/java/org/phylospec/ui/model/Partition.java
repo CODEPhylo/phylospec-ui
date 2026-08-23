@@ -79,6 +79,15 @@ public final class Partition {
     private final StringProperty part = new SimpleStringProperty("2");
     private final StringProperty regex = new SimpleStringProperty("(\\d+\\.?\\d*)$");
 
+    // Which models this partition uses. Several partitions pointing at the same object is what
+    // "linked" means; unlinking replaces the reference here with a copy of its own.
+    private final javafx.beans.property.ObjectProperty<SiteModel> siteModel =
+            new javafx.beans.property.SimpleObjectProperty<>();
+    private final javafx.beans.property.ObjectProperty<Component> clockModel =
+            new javafx.beans.property.SimpleObjectProperty<>();
+    private final javafx.beans.property.ObjectProperty<TreeModel> tree =
+            new javafx.beans.property.SimpleObjectProperty<>();
+
     public Partition(Path path) {
         this.file.set(path.toString());
         this.name.set(variableName(path));
@@ -191,6 +200,33 @@ public final class Partition {
 
     public StringProperty regexProperty() {
         return regex;
+    }
+
+    /** The substitution process this partition uses, shared with any partition pointing at it. */
+    public javafx.beans.property.ObjectProperty<SiteModel> siteModelProperty() {
+        return siteModel;
+    }
+
+    public SiteModel siteModel() {
+        return siteModel.get();
+    }
+
+    /** How rates vary along the branches, shared the same way. */
+    public javafx.beans.property.ObjectProperty<Component> clockModelProperty() {
+        return clockModel;
+    }
+
+    public Component clockModel() {
+        return clockModel.get();
+    }
+
+    /** The tree this partition is drawn on. */
+    public javafx.beans.property.ObjectProperty<TreeModel> treeProperty() {
+        return tree;
+    }
+
+    public TreeModel tree() {
+        return tree.get();
     }
 
     public String name() {

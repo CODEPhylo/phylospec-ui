@@ -39,13 +39,15 @@ public final class Analysis {
     private final EngineSupport support;
 
     private final ObservableList<Partition> partitions = FXCollections.observableArrayList();
-    private final Component substitutionModel;
-    private final Component siteRates;
-    private final Component clockModel;
-    private final Component treePrior;
-    private final Component likelihood;
 
-    private final StringProperty treeName = new SimpleStringProperty("tree");
+    // The model groups. A group serves every partition pointing at it, so "linked" is one object
+    // with several referrers and "unlinked" is a copy of its own. One of each to begin with, which
+    // is BEAUti's state immediately after import.
+    private final ObservableList<SiteModel> siteModels = FXCollections.observableArrayList();
+    private final ObservableList<Component> clockModels = FXCollections.observableArrayList();
+    private final ObservableList<TreeModel> trees = FXCollections.observableArrayList();
+
+    private final Component likelihood;
     private final StringProperty chainLength = new SimpleStringProperty("10000000");
     private final StringProperty logEvery = new SimpleStringProperty("1000");
     private final StringProperty logFile = new SimpleStringProperty("analysis.log");
@@ -58,27 +60,48 @@ public final class Analysis {
     public Analysis(Library library, EngineSupport support) {
         this.library = library;
         this.support = support;
-        this.substitutionModel = Component.estimable(library, support);
-        this.siteRates = Component.estimable(library, support);
-        this.clockModel = Component.estimable(library, support);
-        this.treePrior = Component.estimable(library, support);
+        this.siteModels.add(new SiteModel(library, support));
+        this.clockModels.add(Component.estimable(library, support));
+        this.trees.add(new TreeModel(Component.estimable(library, support)));
         this.likelihood = Component.estimable(library, support);
+
+        // A partition can arrive through addPartition, through a drop on the Partitions tab, or
+        // straight onto the list. Attaching the models here covers all three, so no caller has to
+        // remember, and a partition is never half-built.
+        partitions.addListener((javafx.collections.ListChangeListener<Partition>) change -> {
+            while (change.next()) {
+                change.getAddedSubList().forEach(this::attachModels);
+            }
+            renameTrees();
+        });
         applyDefaults();
     }
 
     /** The starting model, chosen to match BEAUti's: HKY, no rate heterogeneity, strict clock, Yule. */
     private void applyDefaults() {
-        select(substitutionModel, "hky");
-        select(clockModel, "StrictClock");
-        select(treePrior, "Yule");
+        select(substitutionModel(), "hky");
+        select(clockModel(), "StrictClock");
+        select(treePrior(), "Yule");
         select(likelihood, "PhyloCTMC");
 
         // BEAUti fixes the clock rate at 1.0 by default so the tree is scaled in substitutions.
-        Param clockRate = clockModel.param("clockRate");
+        Param clockRate = clockModel().param("clockRate");
         if (clockRate != null) {
             clockRate.estimateProperty().set(false);
             clockRate.valueProperty().set("1.0");
         }
+    }
+
+    /** Points a partition at the first group of each kind, which is what "linked" starts as. */
+    private void attachModels(Partition partition) {
+        if (partition.siteModel() == null) partition.siteModelProperty().set(siteModels.get(0));
+        if (partition.clockModel() == null) partition.clockModelProperty().set(clockModels.get(0));
+        if (partition.tree() == null) partition.treeProperty().set(trees.get(0));
+    }
+
+    /** Applies the same default choices to a group that has just been unlinked. */
+    private void applyDefaultsTo(SiteModel model) {
+        select(model.substitutionModel(), "hky");
     }
 
     private void select(Component component, String generatorName) {
@@ -174,20 +197,153 @@ public final class Analysis {
         return partitions;
     }
 
+    /** The site models in use, one per group of partitions sharing a substitution process. */
+    public ObservableList<SiteModel> siteModels() {
+        return siteModels;
+    }
+
+    /** The clock models in use. */
+    public ObservableList<Component> clockModels() {
+        return clockModels;
+    }
+
+    /** The trees in the analysis. Several may share one prior, and so one set of parameters. */
+    public ObservableList<TreeModel> trees() {
+        return trees;
+    }
+
+    /**
+     * The first site model's substitution model.
+     *
+     * <p>The tabs edit one group at a time, and with everything linked there is only one. These
+     * shorthands are what the tabs bind to, and what a linked analysis means by "the" site model.
+     */
     public Component substitutionModel() {
-        return substitutionModel;
+        return siteModels.get(0).substitutionModel();
     }
 
     public Component siteRates() {
-        return siteRates;
+        return siteModels.get(0).siteRates();
     }
 
     public Component clockModel() {
-        return clockModel;
+        return clockModels.get(0);
     }
 
     public Component treePrior() {
-        return treePrior;
+        return trees.get(0).prior();
+    }
+
+    // ------------------------------------------------------------- linking
+
+    /**
+     * Gives a partition a site model of its own, copied from the one it shares now.
+     *
+     * <p>A copy rather than a fresh default: unlinking is usually the prelude to changing one
+     * thing about one partition, so starting from what was already chosen loses nothing and asks
+     * the user for less.
+     */
+    public SiteModel unlinkSiteModel(Partition partition) {
+        SiteModel copy = new SiteModel(library, support);
+        Component.copy(partition.siteModel().substitutionModel(), copy.substitutionModel());
+        Component.copy(partition.siteModel().siteRates(), copy.siteRates());
+        siteModels.add(copy);
+        partition.siteModelProperty().set(copy);
+        discardUnusedSiteModels();
+        return copy;
+    }
+
+    /** Points a partition at another partition's site model, and drops any group left empty. */
+    public void linkSiteModel(Partition partition, SiteModel target) {
+        partition.siteModelProperty().set(target);
+        discardUnusedSiteModels();
+    }
+
+    /** Gives a partition a clock model of its own, copied from the one it shares now. */
+    public Component unlinkClockModel(Partition partition) {
+        Component copy = Component.estimable(library, support);
+        Component.copy(partition.clockModel(), copy);
+        clockModels.add(copy);
+        partition.clockModelProperty().set(copy);
+        discardUnusedClockModels();
+        return copy;
+    }
+
+    public void linkClockModel(Partition partition, Component target) {
+        partition.clockModelProperty().set(target);
+        discardUnusedClockModels();
+    }
+
+    /**
+     * Gives a partition a tree of its own.
+     *
+     * <p>The new tree keeps the <em>same</em> prior component by default, which is the two-level
+     * part: separate trees drawn from one {@code Coalescent} share its {@code populationSize},
+     * which is the multi-locus estimate. {@link #unlinkTreePrior} separates the parameters as well.
+     */
+    public TreeModel unlinkTree(Partition partition) {
+        TreeModel tree = new TreeModel(partition.tree().prior());
+        trees.add(tree);
+        partition.treeProperty().set(tree);
+        discardUnusedTrees();
+        renameTrees();
+        return tree;
+    }
+
+    public void linkTree(Partition partition, TreeModel target) {
+        partition.treeProperty().set(target);
+        discardUnusedTrees();
+        renameTrees();
+    }
+
+    /** Gives a tree a prior of its own, copied from the one it shares now, separating parameters. */
+    public Component unlinkTreePrior(TreeModel tree) {
+        Component copy = Component.estimable(library, support);
+        Component.copy(tree.prior(), copy);
+        tree.priorProperty().set(copy);
+        return copy;
+    }
+
+    /** Points a tree at another tree's prior, so the two share every parameter of it. */
+    public void linkTreePrior(TreeModel tree, TreeModel target) {
+        tree.priorProperty().set(target.prior());
+    }
+
+    private void discardUnusedSiteModels() {
+        siteModels.removeIf(model -> siteModels.size() > 1 && partitions.stream()
+                .noneMatch(partition -> partition.siteModel() == model));
+    }
+
+    private void discardUnusedClockModels() {
+        clockModels.removeIf(model -> clockModels.size() > 1 && partitions.stream()
+                .noneMatch(partition -> partition.clockModel() == model));
+    }
+
+    private void discardUnusedTrees() {
+        trees.removeIf(tree -> trees.size() > 1 && partitions.stream()
+                .noneMatch(partition -> partition.tree() == tree));
+    }
+
+    /**
+     * Names each tree after the first partition drawn on it, so a script reads {@code gene1Tree}
+     * rather than {@code tree2}. A single tree keeps whatever name it has, which is the plain
+     * {@code tree} the writer has always used, and which the user may have changed.
+     */
+    private void renameTrees() {
+        if (trees.size() == 1) {
+            // Back to one tree, so back to the plain name. Otherwise relinking would leave the
+            // last unlink's name behind and the script would not be the one it started as.
+            TreeModel only = trees.get(0);
+            if (!only.pinned()) only.nameProperty().set("tree");
+            return;
+        }
+        for (TreeModel tree : trees) {
+            if (tree.pinned()) continue;
+            partitions.stream()
+                    .filter(partition -> partition.tree() == tree)
+                    .findFirst()
+                    .ifPresent(partition -> tree.nameProperty().set(partition.name() + "Tree"));
+        }
     }
 
     /**
@@ -201,7 +357,16 @@ public final class Analysis {
 
     /** Every model slot, in the order their statements are written. */
     public List<Component> components() {
-        return List.of(substitutionModel, siteRates, clockModel, treePrior, likelihood);
+        List<Component> all = new java.util.ArrayList<>();
+        for (SiteModel model : siteModels) all.addAll(model.components());
+        all.addAll(clockModels);
+        // Trees can share a prior, and a component visited twice would have its params counted
+        // twice: once as a prior to list and once as a statement to write.
+        for (TreeModel tree : trees) {
+            if (all.stream().noneMatch(seen -> seen == tree.prior())) all.add(tree.prior());
+        }
+        all.add(likelihood);
+        return all;
     }
 
     /** True if the chosen likelihood takes an argument of this name, so its chooser is worth showing. */
@@ -224,8 +389,9 @@ public final class Analysis {
                 .orElse(null);
     }
 
+    /** The name of the first tree, which is the only one unless trees have been unlinked. */
     public StringProperty treeNameProperty() {
-        return treeName;
+        return trees.get(0).nameProperty();
     }
 
     public StringProperty chainLengthProperty() {

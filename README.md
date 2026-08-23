@@ -359,8 +359,9 @@ engine may not read them. They are set in one place, `ScriptWriter.mcmcStatement
 
 ## Not yet supported
 
-- **Unlinked partitions.** Alignments all share one site model, clock model and tree, which is
-  BEAUti's state immediately after import. Per-partition models are not yet expressible here.
+- **Unlinked partitions, in the tabs.** The model, the writer and the reader handle partitions with
+  models of their own, including two trees sharing one prior so that a population size is estimated
+  across loci. Nothing on the tabs offers it yet, so an analysis is still linked in practice.
 - **Operators.** These have no PhyloSpec equivalent by design — they are machinery an engine chooses,
   not part of the model description — so there is no Operators tab.
 - **Starting trees and state initialisation**, for the same reason.

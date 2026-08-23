@@ -87,6 +87,41 @@ public final class Component {
         return component;
     }
 
+    /**
+     * Makes {@code to} a copy of {@code from}: the same generator, the same values, ticks and
+     * priors, all the way down.
+     *
+     * <p>This is what unlinking uses. Unlinking is nearly always the prelude to changing one thing
+     * about one partition, so a copy of what was already chosen asks the user for less than a fresh
+     * default would, and loses nothing.
+     */
+    public static void copy(Component from, Component to) {
+        to.generator.set(from.generator());
+        if (from.generator() == null) return;
+
+        for (Param source : from.params()) {
+            Param target = to.param(source.name());
+            if (target == null) continue;
+
+            target.valueProperty().set(source.valueProperty().get());
+            target.includeProperty().set(source.includeProperty().get());
+            // Ticking this attaches a default prior, which the copy below then overwrites.
+            target.estimateProperty().set(source.isEstimated());
+
+            Component sourceInner = source.priorProperty().get();
+            if (sourceInner == null || sourceInner.generator() == null) continue;
+
+            Component targetInner = target.priorProperty().get();
+            if (targetInner == null) {
+                targetInner = source.isEstimated()
+                        ? prior(sourceInner.generator(), target.dimension())
+                        : nested(sourceInner.generator(), to.library, to.argsEstimable, to.support);
+                target.priorProperty().set(targetInner);
+            }
+            copy(sourceInner, targetInner);
+        }
+    }
+
     private void rebuild(Generator chosen) {
         params.clear();
         if (chosen == null) return;
