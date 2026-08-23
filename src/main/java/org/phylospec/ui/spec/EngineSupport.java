@@ -26,8 +26,8 @@ import org.phylospec.components.Generator__1;
  *
  * <p>A component library says what a component <em>is</em>; an engine specification says which of
  * them an engine <em>implements</em>. They are separate documents with separate authors, and an
- * engine implements only a subset of core: the generated BEAST 2 specification covers 50 of core's
- * 91 components, leaving out {@code PhyloBM}, {@code SkylineCoalescent}, {@code mk} and
+ * engine implements only a subset of core: the generated BEAST 2 specification covers 51 of core's
+ * 92 components, leaving out {@code PhyloBM}, {@code SkylineCoalescent}, {@code mk} and
  * {@code fromFasta} among others. Offering those as choices produces a script that type-checks and
  * then cannot be run.
  *

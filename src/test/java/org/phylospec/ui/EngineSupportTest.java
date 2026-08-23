@@ -66,7 +66,7 @@ public class EngineSupportTest {
     }
 
     /**
-     * The subtraction this is all for. BEAST 2 implements 50 of core's 91 components, and the UI
+     * The subtraction this is all for. BEAST 2 implements 51 of core's 92 components, and the UI
      * offers several of the missing ones today: PhyloBM and PhyloOU on the Likelihood tab,
      * SkylineCoalescent on the Tree Prior tab, lg and gy94 as substitution models.
      */
@@ -77,6 +77,21 @@ public class EngineSupportTest {
             assertFalse(verdict.supported(), missing + " is not in the BEAST 2 specification");
             assertTrue(verdict.reason().contains(missing), verdict.reason());
             assertTrue(verdict.reason().contains("beast2 2.8.0-beta4"), verdict.reason());
+        }
+    }
+
+    /**
+     * The specification is generated, so it goes stale when core moves. Core gained a second
+     * {@code gtr} in #76, taking joint {@code relativeRates}, and BEAST 2 implements it: against
+     * the specification generated before that, this UI would have greyed out a model the engine
+     * can run. Both overloads are checked so that a stale copy fails here rather than in the tabs.
+     */
+    @Test
+    void bothGtrOverloadsAreImplemented() {
+        List<Generator> gtrs = library.overloads("gtr");
+        assertEquals(2, gtrs.size(), "core declares gtr with six rates and with a simplex");
+        for (Generator gtr : gtrs) {
+            assertTrue(beast2.supports(gtr), gtr.getArguments().get(0).getName());
         }
     }
 

@@ -304,7 +304,7 @@ declared type of each variable told them apart. Core gained exactly that in phyl
 
 A component library says what a component *is*. An engine specification says which of them an engine
 *implements*, and an engine implements only a subset: `engines/beast2-2.8.0-beta4.json`, generated
-from `integrations/beast3` by phylospec's own `CreateEngineSpecification`, covers 50 of core's 91
+from `integrations/beast3` by phylospec's own `CreateEngineSpecification`, covers 51 of core's 92
 components. Missing from it are `PhyloBM` and `PhyloOU`, `SkylineCoalescent`, `lg`, `gy94`, `mk`,
 `fromFasta` and `fromCSV`, among others. Without the specification the UI offers all of them, and the
 user finds out at run time.
@@ -347,8 +347,11 @@ run is the worse of the two errors. The same collapse shows up in `exp`, which t
 lists twice with disagreeing `canBeStochastic`, and a yes from either is taken as a yes.
 
 The specification is committed here because none is published yet. They are written to a git-ignored
-`generated` folder, so this one was generated locally at phylospec `21cba006` and copied in. When
-they ship in a repository this copy should go.
+`generated` folder, so this one was generated locally at phylospec `18f87260` and copied in. When
+they ship in a repository this copy should go, and until then it goes stale whenever core moves:
+core's second `gtr` arrived in #76, BEAST 2 implements it, and against the copy generated before
+that this UI greyed out a model the engine can run. `EngineSupportTest` checks both `gtr` overloads
+so that a stale copy fails there rather than in the tabs.
 
 Not covered yet: the Partitions tab still offers FASTA files, and BEAST 2 does not implement
 `fromFasta`, so that is a script the engine cannot run and the UI does not yet say so.

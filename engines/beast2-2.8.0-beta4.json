@@ -469,6 +469,17 @@
       "canBeStochastic" : true
     } ]
   }, {
+    "name" : "gtr",
+    "arguments" : [ {
+      "name" : "relativeRates",
+      "required" : true,
+      "canBeStochastic" : true
+    }, {
+      "name" : "baseFrequencies",
+      "required" : true,
+      "canBeStochastic" : true
+    } ]
+  }, {
     "name" : "wag",
     "arguments" : [ {
       "name" : "baseFrequencies",
