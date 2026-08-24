@@ -154,6 +154,26 @@ public final class Component {
     }
 
     /**
+     * Tells a prior how long the value it draws is, where the declaration says.
+     *
+     * <p>An {@code IID} over the branches of a species tree has to be told how many branches there
+     * are, and asking the user would be asking them to repeat what the component already declares.
+     * The argument to fill is the one the drawn type takes its {@code num} from, which by
+     * convention is called {@code num} as well.
+     */
+    public static Component sized(Component prior, Param drawn) {
+        Param count = prior.param("num");
+        if (count == null) return prior;
+
+        if (drawn.dimensionExpression() != null) {
+            count.valueProperty().set(drawn.dimensionExpression());
+        } else if (drawn.dimension() != null) {
+            count.valueProperty().set(String.valueOf(drawn.dimension()));
+        }
+        return prior;
+    }
+
+    /**
      * Whether the engines allow this argument to be drawn from a distribution.
      *
      * <p>Only a declared no is taken as a no. Where no specification is loaded, or none of them
@@ -180,7 +200,7 @@ public final class Component {
         if (param.priorProperty().get() != null) return;
         if (param.isDistributionValued() || param.isEstimated()) {
             Generator choice = library.defaultPriorFor(param.priorSupport());
-            if (choice != null) param.priorProperty().set(prior(choice, param.dimension(), library));
+            if (choice != null) param.priorProperty().set(sized(prior(choice, param.dimension(), library), param));
         } else if (param.isComponentValued()) {
             List<Generator> choices = library.producing(param.type());
             if (!choices.isEmpty()) {

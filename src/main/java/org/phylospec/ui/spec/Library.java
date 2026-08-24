@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import org.phylospec.components.Argument;
 import org.phylospec.components.ComponentLibrary;
 import org.phylospec.components.ComponentResolver;
 import org.phylospec.components.Generator;
@@ -249,16 +250,51 @@ public final class Library {
         for (List<Generator> overloads : generators.values()) {
             for (Generator generator : overloads) {
                 if (!"Distribution".equals(head(generator.getGeneratedType()))) continue;
-                if (takesADistribution(generator)) continue;
+                if (needsTheTree(generator)) continue;
                 String support = inner(generator.getGeneratedType());
-                if (support != null && isSubtype(support, type)) found.add(generator);
+                if (support == null || !isSubtype(support, type)) continue;
+                if (isGeneric(generator)) continue;
+                found.add(generator);
             }
         }
         return found;
     }
 
-    private static boolean takesADistribution(Generator generator) {
-        return generator.getArguments().stream().anyMatch(a -> "Distribution".equals(head(a.getType())));
+    /**
+     * Whether a generator is generic in a type this UI cannot pin down.
+     *
+     * <p>Core's {@code IID} draws a {@code Vector<T>} from a {@code Distribution<T>}, and what
+     * {@code T} is depends on the value being drawn. Nothing here instantiates that, so offering it
+     * produces a distribution with no distribution inside it. An engine library can declare the
+     * concrete version in the meantime, which is what {@code libraries/beast28.json} does.
+     */
+    private boolean isGeneric(Generator generator) {
+        for (Argument argument : generator.getArguments()) {
+            String head = head(argument.getType());
+            String inner = inner(argument.getType());
+            if (unknown(head) || (inner != null && unknown(head(inner.split(";", 2)[0].trim())))) return true;
+        }
+        return false;
+    }
+
+    private boolean unknown(String name) {
+        return name != null && !name.isEmpty() && !types.containsKey(name)
+                && !types.containsKey(canonical(name));
+    }
+
+    /**
+     * Whether a distribution needs the tree, which disqualifies it as a prior on a parameter.
+     *
+     * <p>A clock model produces a vector of rates and so looks like a prior on any vector, but it
+     * is a model of the tree rather than a statement about a parameter: offering StrictClock as a
+     * prior on the population sizes of a species tree is offering nonsense.
+     *
+     * <p>This replaces refusing anything that takes a distribution, which caught the clocks by
+     * accident and also caught {@code IID}, the one prior that draws a vector from a single
+     * distribution and so the only sensible choice for population sizes.
+     */
+    private static boolean needsTheTree(Generator generator) {
+        return generator.getArguments().stream().anyMatch(a -> "tree".equals(a.getName()));
     }
 
     /** Functions that build a value of {@code type}, such as the population functions a coalescent takes. */

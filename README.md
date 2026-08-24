@@ -227,6 +227,20 @@ That is the whole of it. The species tree, the distribution over it, the species
 they come from are all settled by the types: there is one candidate at each step, so each is already
 chosen. The Priors tab is where they can be changed, not where they have to be filled in.
 
+The population sizes come out of it too. A multispecies coalescent has one per branch of the species
+tree, not one overall, so the argument is declared
+`Vector<PositiveReal; num=speciesTree.numBranches>` and the prior on it is told how long it is:
+
+```
+Vector<PositiveReal> populationSizes ~ IID(base=LogNormal(logMean=0.0, logSd=1.0), num=numBranches(speciesTree))
+```
+
+Nobody types that length. A declared length that is an expression is read as the call that computes
+it, since a type property and the function reading it are the same name: `speciesTree.numBranches`
+becomes `numBranches(speciesTree)`, as `vector.num` becomes `num(vector)`. Where core has no such
+function the length is not used at all rather than guessed at, which is why SNAPP's `theta` stays a
+literal: a `Tree` declares `numNodes` among its properties and core offers no `numNodes(tree)`.
+
 The species tree needs no tab of its own. It is an estimated `Tree` argument, so it appears on the
 Priors tab like any other estimated value, and its `Yule` is chosen there.
 

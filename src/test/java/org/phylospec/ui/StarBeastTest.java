@@ -170,7 +170,14 @@ public class StarBeastTest {
         assertTrue(script.contains("species(alignments=[gene1, gene2])"),
                 "the species come from every locus, without anyone saying so:\n" + script);
         assertEquals(2, count(script, "speciesTree=speciesTree"), "one species tree, both genes");
-        assertEquals(1, count(script, "PositiveReal populationSize ~"), "one population size across loci");
+        // A population size per branch of the species tree, which is what the coalescent
+        // integrates gene trees over, drawn once and shared by every locus. Its length comes from
+        // the declaration: the argument says num=speciesTree.numBranches, and core has a
+        // numBranches to read it with.
+        assertTrue(script.contains("num=numBranches(speciesTree)"),
+                "the prior is told how many to draw:\n" + script);
+        assertEquals(1, count(script, "populationSizes ~ IID("), "one vector, drawn once");
+        assertEquals(2, count(script, "populationSizes=populationSizes"), "shared by both loci");
 
         assertEquals(List.of(), Validator.check(library, script).all(), script);
     }

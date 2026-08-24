@@ -363,10 +363,10 @@
             "description": "The species tree the gene trees are drawn within."
           },
           {
-            "name": "populationSize",
-            "type": "PositiveReal",
+            "name": "populationSizes",
+            "type": "Vector<PositiveReal; num=speciesTree.numBranches>",
             "required": true,
-            "description": "Effective population size, shared by every branch of the species tree."
+            "description": "Effective population size on each branch of the species tree. One per branch, not one overall: that is what the multispecies coalescent integrates gene trees over."
           },
           {
             "name": "taxa",
@@ -435,6 +435,26 @@
             "type": "SpeciesTaxa",
             "required": true,
             "description": "The species the tree spans."
+          }
+        ]
+      },
+      {
+        "name": "IID",
+        "namespace": "beast.distributions",
+        "description": "A vector of positive reals drawn independently from one distribution, which is how the population sizes on the branches of a species tree are estimated. Core's IID says this generically, over any T; a consumer that cannot instantiate T needs the concrete version, so this is a placeholder for that gap rather than for a missing idea.",
+        "generatedType": "Distribution<Vector<PositiveReal; num=num.value>>",
+        "arguments": [
+          {
+            "name": "base",
+            "type": "Distribution<PositiveReal>",
+            "required": true,
+            "description": "The distribution each element is drawn from."
+          },
+          {
+            "name": "num",
+            "type": "PositiveInteger",
+            "required": true,
+            "description": "How many to draw."
           }
         ]
       }

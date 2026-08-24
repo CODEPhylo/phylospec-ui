@@ -34,6 +34,15 @@ public final class Param {
     private final boolean indicator;
     private final Integer dimension;
 
+    /**
+     * The length written as an expression, when it is one: {@code speciesTree.numBranches}.
+     *
+     * <p>It cannot be turned into a number here, since it depends on a model that is still being
+     * built, but it can be handed to whatever draws the value: an {@code IID} over the branches of
+     * a species tree needs to be told how many there are, and the declaration already says.
+     */
+    private final String dimensionExpression;
+
     private final StringProperty value = new SimpleStringProperty();
     private final BooleanProperty estimate = new SimpleBooleanProperty(false);
     private final BooleanProperty include = new SimpleBooleanProperty(true);
@@ -62,8 +71,10 @@ public final class Param {
         this.description = argument.getDescription();
         this.required = Boolean.TRUE.equals(argument.getRequired());
         this.indicator = isIndicator(argument);
-        this.estimable = estimable && (indicator || isEstimatableType(type, library));
         this.dimension = fixedDimension(argument);
+        this.dimensionExpression = declaredExpression(argument, library);
+        this.estimable = estimable && (indicator
+                || isEstimatableType(type, library, dimension != null || dimensionExpression != null));
         this.value.set(defaultValue(argument, dimension));
         this.estimate.set(this.estimable && this.required);
         this.variable.set(name);
@@ -119,6 +130,36 @@ public final class Param {
      * left alone: it depends on a model that is not built yet, and the writer wires those arguments
      * itself.
      */
+    /**
+     * The declared length when it is an expression rather than a number, translated into the call
+     * that computes it: {@code speciesTree.numBranches} becomes {@code numBranches(speciesTree)}.
+     *
+     * <p>The two spellings are the same name either way round, which is not a coincidence: a type
+     * property and the function that reads it describe the same quantity, so core has
+     * {@code numBranches(tree)} beside {@code tree.numBranches}, and {@code num(vector)} beside
+     * {@code vector.num}. Not every property has one, though, so the library is asked.
+     */
+    private static String declaredExpression(Argument argument, Library library) {
+        String declared = Library.property(argument.getType(), "num");
+        if (declared == null && argument.getDimension() != null) {
+            declared = String.valueOf(argument.getDimension());
+        }
+        if (declared == null || positive(declared) != null) return null;
+
+        int dot = declared.indexOf('.');
+        if (dot < 1 || dot == declared.length() - 1) return null;
+        String owner = declared.substring(0, dot).trim();
+        String property = declared.substring(dot + 1).trim();
+        if (!property.matches("[A-Za-z][A-Za-z0-9]*") || !owner.matches("[A-Za-z][A-Za-z0-9]*")) {
+            return null;
+        }
+        // Only if the property has a function to read it. A Tree declares numNodes among its
+        // properties and core offers no numNodes(tree), so that length cannot be computed and the
+        // vector stays a literal rather than being drawn at a length nothing can work out.
+        if (library == null || library.overloads(property).isEmpty()) return null;
+        return property + "(" + owner + ")";
+    }
+
     private static Integer fixedDimension(Argument argument) {
         Integer declared = positive(Library.property(argument.getType(), "num"));
         if (declared != null) return declared;
@@ -185,9 +226,15 @@ public final class Param {
      * library are discretisation settings — gamma category counts and the like — which are chosen,
      * not inferred, so offering them a prior would be misleading.
      */
-    private static boolean isEstimatableType(String type, Library library) {
+    private static boolean isEstimatableType(String type, Library library, boolean lengthDeclared) {
         // A tree, or anything an engine has declared to be one.
         if (library != null && library.isSubtype(type, "Tree")) return true;
+
+        // A vector of numbers whose length is declared: population sizes on the branches of a
+        // species tree are estimated the same way a single rate is, with one distribution over the
+        // lot of them. Without a declared length there is nothing to tell that distribution how
+        // many to draw, so the vector stays a literal the user writes out.
+        if ("Vector".equals(Library.head(type)) && numeric(Library.inner(type))) return lengthDeclared;
 
         return switch (Library.head(type)) {
             case "Real", "PositiveReal", "Rate", "NonNegativeReal", "Age", "Probability", "Simplex" -> true;
@@ -250,6 +297,11 @@ public final class Param {
     /** The length the library fixes this argument at, or null if it does not fix one. */
     public Integer dimension() {
         return dimension;
+    }
+
+    /** The declared length as a call, for a length that is an expression. Null if there is none. */
+    public String dimensionExpression() {
+        return dimensionExpression;
     }
 
     /**
