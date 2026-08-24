@@ -437,26 +437,6 @@
             "description": "The species the tree spans."
           }
         ]
-      },
-      {
-        "name": "IID",
-        "namespace": "beast.distributions",
-        "description": "A vector of positive reals drawn independently from one distribution, which is how the population sizes on the branches of a species tree are estimated. Core's IID says this generically, over any T; a consumer that cannot instantiate T needs the concrete version, so this is a placeholder for that gap rather than for a missing idea.",
-        "generatedType": "Distribution<Vector<PositiveReal; num=num.value>>",
-        "arguments": [
-          {
-            "name": "base",
-            "type": "Distribution<PositiveReal>",
-            "required": true,
-            "description": "The distribution each element is drawn from."
-          },
-          {
-            "name": "num",
-            "type": "PositiveInteger",
-            "required": true,
-            "description": "How many to draw."
-          }
-        ]
       }
     ]
   }

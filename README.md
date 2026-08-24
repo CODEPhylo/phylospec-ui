@@ -241,6 +241,15 @@ becomes `numBranches(speciesTree)`, as `vector.num` becomes `num(vector)`. Where
 function the length is not used at all rather than guessed at, which is why SNAPP's `theta` stays a
 literal: a `Tree` declares `numNodes` among its properties and core offers no `numNodes(tree)`.
 
+That `IID` is core's own, and it is generic: it draws a `Vector<T>` from a `Distribution<T>`. What
+`T` is comes from the value being drawn, so asking for a vector of positive reals makes `base` a
+`Distribution<PositiveReal>` and the choosers offer distributions over one. Two of core's generic
+components are still left out, for reasons that are theirs rather than ours. `Mixture` takes a
+`Vector<Distribution<T>>`, and there is no editor for a list whose elements are chosen. `Truncated`
+declares its `T` only in the generated type and in optional arguments, so a call never pins it down
+and the resolver refuses it, and its `lower` and `upper` default to `-Inf` and `+Inf`, which are not
+literals in the language.
+
 The species tree needs no tab of its own. It is an estimated `Tree` argument, so it appears on the
 Priors tab like any other estimated value, and its `Yule` is chosen there.
 

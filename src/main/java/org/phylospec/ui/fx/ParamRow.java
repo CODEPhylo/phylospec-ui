@@ -20,6 +20,7 @@ import org.phylospec.ui.model.Analysis;
 import org.phylospec.ui.model.Component;
 import org.phylospec.ui.model.Param;
 import org.phylospec.ui.model.Partition;
+import org.phylospec.ui.spec.EngineSupport;
 import org.phylospec.ui.spec.Library;
 
 /**
@@ -88,7 +89,8 @@ public final class ParamRow {
         Library library = analysis.library();
         return param.isComponentValued()
                 ? componentEditor(analysis, candidatesFor(library, param), param.priorProperty(),
-                        chosen -> Component.nested(chosen, library, false))
+                        chosen -> Component.nested(chosen, library, false, EngineSupport.unclaimed(),
+                                param.isDistributionValued() ? param.priorSupport() : param.type()))
                 : valueField(param);
     }
 
@@ -184,7 +186,8 @@ public final class ParamRow {
     public static Node distributionEditor(Analysis analysis, Param param) {
         Library library = analysis.library();
         return componentEditor(analysis, library.priorsFor(param.priorSupport()), param.priorProperty(),
-                chosen -> Component.sized(Component.prior(chosen, param.dimension(), library), param));
+                chosen -> Component.sized(
+                        Component.prior(chosen, param.dimension(), library, param.priorSupport()), param));
     }
 
     /**

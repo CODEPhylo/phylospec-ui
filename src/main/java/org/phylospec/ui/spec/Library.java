@@ -252,12 +252,105 @@ public final class Library {
                 if (!"Distribution".equals(head(generator.getGeneratedType()))) continue;
                 if (needsTheTree(generator)) continue;
                 String support = inner(generator.getGeneratedType());
-                if (support == null || !isSubtype(support, type)) continue;
-                if (isGeneric(generator)) continue;
+                if (support == null) continue;
+                if (!isSubtype(substitute(support, unify(support, type)), type)) continue;
+                if (!determinable(generator) || !buildable(generator)) continue;
                 found.add(generator);
             }
         }
         return found;
+    }
+
+    /**
+     * What a generic generator's type variables have to be, for it to produce {@code actual}.
+     *
+     * <p>Core draws a {@code Vector<T>} from a {@code Distribution<T>} and takes a
+     * {@code Taxa<T>} to make a {@code Tree<T>}, so what {@code T} is depends on the value being
+     * asked for. Reading it off the value is what lets one generic component stand in for the
+     * concrete copies an engine library would otherwise have to declare one per element type.
+     *
+     * <p>Empty when there is nothing to work out, which is every component core ships that is not
+     * one of the eight generic ones.
+     */
+    public Map<String, String> unify(String pattern, String actual) {
+        Map<String, String> bindings = new LinkedHashMap<>();
+        collect(pattern, actual, bindings);
+        return bindings;
+    }
+
+    private void collect(String pattern, String actual, Map<String, String> into) {
+        if (pattern == null || actual == null) return;
+        if (unknown(head(pattern))) {
+            into.putIfAbsent(head(pattern), actual.split(";", 2)[0].trim());
+            return;
+        }
+        collect(parameterOf(pattern), parameterOf(actual), into);
+    }
+
+    /** Puts what a type variable stands for in its place, leaving everything else alone. */
+    public static String substitute(String type, Map<String, String> bindings) {
+        if (type == null || bindings.isEmpty()) return type;
+        String substituted = type;
+        for (Map.Entry<String, String> binding : bindings.entrySet()) {
+            substituted = substituted.replaceAll("\\b" + binding.getKey() + "\\b", binding.getValue());
+        }
+        return substituted;
+    }
+
+    /** What {@code generator} must bind to serve as a prior over {@code support}. */
+    public Map<String, String> bindingsForPrior(Generator generator, String support) {
+        return unify(inner(generator.getGeneratedType()), support);
+    }
+
+    /** What {@code generator} must bind to produce a value of {@code type}. */
+    public Map<String, String> bindingsForValue(Generator generator, String type) {
+        return unify(generator.getGeneratedType(), type);
+    }
+
+    /**
+     * Whether a call to this generator would say what its type variables are.
+     *
+     * <p>The resolver reads them off the arguments, not off the declared type of the variable being
+     * drawn, so a variable that appears only in optional arguments is never pinned down. Core's
+     * {@code Truncated} is the case: its {@code T} is in the generated type and in {@code lower}
+     * and {@code upper}, both optional, while {@code base} is a {@code Distribution<Real>}, so
+     * {@code Truncated(base=...)} is refused with "The type 'T' does not exist".
+     */
+    private boolean determinable(Generator generator) {
+        Set<String> determined = new LinkedHashSet<>();
+        for (Argument argument : generator.getArguments()) {
+            if (!Boolean.TRUE.equals(argument.getRequired())) continue;
+            collectVariables(argument.getType(), determined);
+        }
+        Set<String> needed = new LinkedHashSet<>();
+        collectVariables(generator.getGeneratedType(), needed);
+        return determined.containsAll(needed);
+    }
+
+    private void collectVariables(String type, Set<String> into) {
+        if (type == null) return;
+        String head = head(type);
+        if (unknown(head)) into.add(head);
+        collectVariables(parameterOf(type), into);
+    }
+
+    /**
+     * Whether every required argument is one this UI can put a value in.
+     *
+     * <p>A list of components is not: core's {@code Mixture} takes a
+     * {@code Vector<Distribution<T>>}, and there is no editor for a vector whose elements are
+     * themselves chosen, so offering it produces a call with a hole where the components go.
+     */
+    private boolean buildable(Generator generator) {
+        for (Argument argument : generator.getArguments()) {
+            if (!Boolean.TRUE.equals(argument.getRequired())) continue;
+            String inner = inner(argument.getType());
+            if ("Vector".equals(head(argument.getType())) && inner != null
+                    && !hasLiteralSyntax(inner.split(";", 2)[0].trim())) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /**
@@ -304,8 +397,10 @@ public final class Library {
         List<Generator> found = new ArrayList<>();
         for (List<Generator> overloads : generators.values()) {
             for (Generator generator : overloads) {
-                if (!wanted.equals(head(generator.getGeneratedType()))) continue;
-                if (supplies(parameterOf(generator.getGeneratedType()), parameter)) found.add(generator);
+                String produced = generator.getGeneratedType();
+                if (!wanted.equals(head(produced))) continue;
+                String concrete = substitute(produced, unify(produced, type));
+                if (supplies(parameterOf(concrete), parameter)) found.add(generator);
             }
         }
         return found;

@@ -1,6 +1,7 @@
 package org.phylospec.ui.model;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -45,6 +46,15 @@ public final class Component {
      */
     private final boolean structural;
 
+    /**
+     * What this component's type variables stand for, when it came from a generic generator.
+     *
+     * <p>Core's {@code IID} takes a {@code Distribution<T>}; which distribution the tab should
+     * offer depends on what is being drawn, so the binding is worked out where the component is
+     * chosen and applied to every argument here. Empty for everything that is not generic.
+     */
+    private Map<String, String> bindings = Map.of();
+
     private Component(boolean argsEstimable, Library library, EngineSupport support, boolean structural) {
         this.argsEstimable = argsEstimable;
         this.library = library;
@@ -82,7 +92,15 @@ public final class Component {
      * nothing on the Dirichlet's side of the library can say so.
      */
     public static Component prior(Generator generator, Integer dimension, Library library) {
+        return prior(generator, dimension, library, null);
+    }
+
+    /** The same, for a prior over {@code support}, which decides any type variables it has. */
+    public static Component prior(Generator generator, Integer dimension, Library library, String support) {
         Component component = new Component(false, library, EngineSupport.unclaimed(), false);
+        if (library != null && support != null) {
+            component.boundTo(library.bindingsForPrior(generator, support));
+        }
         component.generator.set(generator);
         if (dimension != null) {
             component.params().forEach(param -> param.resizeTo(dimension));
@@ -98,7 +116,16 @@ public final class Component {
     /** The same, with the engines consulted as in {@link #estimable(Library, EngineSupport)}. */
     public static Component nested(
             Generator generator, Library library, boolean argsEstimable, EngineSupport support) {
+        return nested(generator, library, argsEstimable, support, null);
+    }
+
+    /** The same, for a value of {@code wanted}, which decides any type variables the generator has. */
+    public static Component nested(Generator generator, Library library, boolean argsEstimable,
+            EngineSupport support, String wanted) {
         Component component = new Component(argsEstimable, library, support, false);
+        if (library != null && wanted != null) {
+            component.boundTo(library.bindingsForValue(generator, wanted));
+        }
         component.generator.set(generator);
         return component;
     }
@@ -142,6 +169,7 @@ public final class Component {
         params.clear();
         if (chosen == null) return;
         for (Argument argument : chosen.getArguments()) {
+            argument = substituted(argument);
             // The writer supplies the structural arguments of the model's own components. A prior
             // is not one of those: a Yule over an estimated species tree has to be told which taxa
             // it spans, because no partition is drawn on it.
@@ -151,6 +179,32 @@ public final class Component {
             attachPriors(param);
             params.add(param);
         }
+    }
+
+    /**
+     * The same argument with its type variables replaced, or the argument itself when there are
+     * none. A copy, since the declaration belongs to the library and is shared by everything.
+     */
+    private Argument substituted(Argument argument) {
+        String type = Library.substitute(argument.getType(), bindings);
+        if (type == null || type.equals(argument.getType())) return argument;
+
+        Argument copy = new Argument();
+        copy.setName(argument.getName());
+        copy.setType(type);
+        copy.setRequired(argument.getRequired());
+        copy.setRecommended(argument.getRecommended());
+        copy.setDefault(argument.getDefault());
+        copy.setDimension(argument.getDimension());
+        copy.setDescription(argument.getDescription());
+        copy.setUiHints(argument.getUiHints());
+        return copy;
+    }
+
+    /** Fixes what this component's type variables stand for, before its params are built. */
+    private Component boundTo(Map<String, String> bindings) {
+        this.bindings = bindings == null ? Map.of() : bindings;
+        return this;
     }
 
     /**
@@ -200,11 +254,15 @@ public final class Component {
         if (param.priorProperty().get() != null) return;
         if (param.isDistributionValued() || param.isEstimated()) {
             Generator choice = library.defaultPriorFor(param.priorSupport());
-            if (choice != null) param.priorProperty().set(sized(prior(choice, param.dimension(), library), param));
+            if (choice != null) {
+                param.priorProperty().set(
+                        sized(prior(choice, param.dimension(), library, param.priorSupport()), param));
+            }
         } else if (param.isComponentValued()) {
             List<Generator> choices = library.producing(param.type());
             if (!choices.isEmpty()) {
-                param.priorProperty().set(nested(choices.get(0), library, argsEstimable, support));
+                param.priorProperty().set(
+                        nested(choices.get(0), library, argsEstimable, support, param.type()));
             }
         }
     }
