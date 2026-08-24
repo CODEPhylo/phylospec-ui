@@ -466,8 +466,32 @@ public final class ScriptWriter {
             return nested.name() + "(" + String.join(", ", argsOf(nested, slot)) + ")";
         }
         String value = param.valueProperty().get();
-        if (value == null || value.isBlank()) return "/* " + param.name() + " */";
+        if (value == null || value.isBlank()) {
+            String derived = fromTheData(param);
+            return derived != null ? derived : "/* " + param.name() + " */";
+        }
         return "String".equals(Library.head(param.type())) ? quote(value) : value.trim();
+    }
+
+    /**
+     * What an argument naming an alignment means before anyone has said: the first partition, or
+     * all of them for a vector.
+     *
+     * <p>The same knowledge the writer uses for {@code taxa(...)} and {@code numSites(...)}, applied
+     * to a value the user owns rather than to one the writer owns, so an analysis is complete from
+     * the moment the data is loaded and the tab still decides otherwise.
+     */
+    private String fromTheData(Param param) {
+        List<String> partitions = analysis.partitions().stream().map(Partition::name).toList();
+        if (partitions.isEmpty()) return null;
+
+        String head = Library.head(param.type());
+        String inner = Library.inner(param.type());
+        if ("Alignment".equals(head)) return partitions.get(0);
+        if ("Vector".equals(head) && inner != null && "Alignment".equals(Library.head(inner))) {
+            return "[" + String.join(", ", partitions) + "]";
+        }
+        return null;
     }
 
     // --------------------------------------------------------------- utils

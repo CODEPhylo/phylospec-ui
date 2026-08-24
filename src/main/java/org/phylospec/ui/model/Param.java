@@ -70,6 +70,17 @@ public final class Param {
         this.include.set(this.required || argument.getDefault() != null);
     }
 
+    /** Whether a vector of this element type is a list of numbers that can be defaulted. */
+    private static boolean numeric(String element) {
+        if (element == null) return true;
+        // The element of a generated type carries its properties: Vector<PositiveReal; num=...>.
+        return switch (Library.head(element.split(";", 2)[0].trim())) {
+            case "Real", "PositiveReal", "Rate", "NonNegativeReal", "Age", "Probability",
+                    "Integer", "NonNegativeInteger", "PositiveInteger", "Count" -> true;
+            default -> false;
+        };
+    }
+
     private static String defaultValue(Argument argument, Integer dimension) {
         Object supplied = argument.getDefault();
         if (supplied != null) return String.valueOf(supplied);
@@ -81,7 +92,9 @@ public final class Param {
             case "Probability" -> "0.5";
             case "Integer", "NonNegativeInteger", "PositiveInteger", "Count" -> "1";
             case "Simplex" -> flatSimplex(size);
-            case "Vector" -> repeated("1.0", size);
+            // A vector of numbers can be guessed at; a vector of alignments cannot, and a made-up
+            // one would hide the fact that nothing has been chosen.
+            case "Vector" -> numeric(Library.inner(argument.getType())) ? repeated("1.0", size) : "";
             case "Boolean" -> "true";
             default -> "";
         };

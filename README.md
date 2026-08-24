@@ -214,7 +214,7 @@ tree is not accepted as a species tree.
 This belongs in core rather than here, as a `Taxa` and a tree parameterised by whether their tips
 are species or individuals. See CODEPhylo/phylospec#75.
 
-Nothing above is typed. Setting one up, from an empty window:
+Nothing above is typed, and nothing below it is chosen twice. Setting one up, from an empty window:
 
 | Tab | What to do |
 |---|---|
@@ -222,7 +222,10 @@ Nothing above is typed. Setting one up, from an empty window:
 | Tip Dates & Species | Tick "Read a species from each taxon name", and set the delimiter and part |
 | Partitions | Select every row, choose **Tree**, click **Unlink** |
 | Tree Prior | Choose `MultispeciesCoalescent` |
-| Priors | Under `speciesTree ~ SpeciesYule`, its taxa are already `species`; pick which alignments they come from |
+
+That is the whole of it. The species tree, the distribution over it, the species set and the loci
+they come from are all settled by the types: there is one candidate at each step, so each is already
+chosen. The Priors tab is where they can be changed, not where they have to be filled in.
 
 The species tree needs no tab of its own. It is an estimated `Tree` argument, so it appears on the
 Priors tab like any other estimated value, and its `Yule` is chosen there.

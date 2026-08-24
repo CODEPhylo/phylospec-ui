@@ -393,6 +393,20 @@
       {
         "name": "species",
         "namespace": "beast.functions",
+        "description": "The species sampled by these alignments, one taxon each, read from the species every taxon carries. A placeholder: this belongs in core, see CODEPhylo/phylospec#75.",
+        "generatedType": "SpeciesTaxa",
+        "arguments": [
+          {
+            "name": "alignments",
+            "type": "Vector<Alignment>",
+            "required": true,
+            "description": "The loci the species are taken from, together."
+          }
+        ]
+      },
+      {
+        "name": "species",
+        "namespace": "beast.functions",
         "description": "The species of a taxon set, one taxon per distinct species, read from the species each taxon carries. A placeholder: this belongs in core beside species(taxon), and should be deleted from here when CODEPhylo/phylospec#75 lands it.",
         "generatedType": "SpeciesTaxa",
         "arguments": [

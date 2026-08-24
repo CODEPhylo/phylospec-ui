@@ -78,14 +78,16 @@ public class StarBeastTest {
     private static final String SPECIES = "species(taxa=taxa(alignments=[gene1, gene2]))";
 
     /**
-     * Builds the species set the way the tabs do: by choosing components, not by typing.
+     * Nothing is chosen here, which is the point.
      *
-     * <p>The species tree's {@code taxa} is a component to choose, so the user picks {@code species}
-     * and then the {@code taxa} that takes several alignments. Both halves are placeholders in
+     * <p>The types leave one candidate at every step: the coalescent's species tree is a
+     * {@code SpeciesTree}, so its distribution is {@code SpeciesYule}; that takes a
+     * {@code SpeciesTaxa}, so its taxa are {@code species}; and that takes the alignments, which the
+     * writer fills with the loaded ones. Both halves are placeholders in
      * {@code libraries/beast28.json} and belong in core, which is why
      * {@link #theSpeciesSetStillHasToComeFromTheEngineLibrary()} watches for them arriving.
      */
-    private static void chooseTheSpeciesSet(Analysis analysis) {
+    private static void assertTheSpeciesSetIsAlreadyChosen(Analysis analysis) {
         Param speciesTree = analysis.treePrior().param("speciesTree");
         assertEquals("SpeciesYule", speciesTree.priorProperty().get().name(),
                 "the only distribution over a SpeciesTree");
@@ -94,11 +96,6 @@ public class StarBeastTest {
         assertTrue(taxa.isComponentValued(), "a taxon set is chosen, not typed");
         assertEquals("species", taxa.priorProperty().get().name(),
                 "the only thing that produces a SpeciesTaxa");
-
-        // The one choice left: which loci the species are taken from. The tab ticks them all.
-        Component ofAlignments = Component.nested(overload("taxa", "alignments"), library, false);
-        taxa.priorProperty().get().param("taxa").priorProperty().set(ofAlignments);
-        ofAlignments.param("alignments").valueProperty().set("[gene1, gene2]");
     }
 
     /** The overload of {@code name} that takes an argument called {@code argument}. */
@@ -127,9 +124,8 @@ public class StarBeastTest {
         analysis.treePrior().generatorProperty()
                 .set(library.overloads("MultispeciesCoalescent").get(0));
 
-        // The coalescent's own taxa are the gene's, and the writer supplies those. The species
-        // tree's taxa are the species, and those are chosen.
-        chooseTheSpeciesSet(analysis);
+        // Nothing more to set: the types leave one candidate at each step below the coalescent.
+        assertTheSpeciesSetIsAlreadyChosen(analysis);
         return analysis;
     }
 
@@ -171,6 +167,8 @@ public class StarBeastTest {
         assertTrue(script.contains("SpeciesTree speciesTree ~ SpeciesYule("), script);
         assertTrue(script.contains("Tree gene1Tree ~ MultispeciesCoalescent("), script);
         assertTrue(script.contains("Tree gene2Tree ~ MultispeciesCoalescent("), script);
+        assertTrue(script.contains("species(alignments=[gene1, gene2])"),
+                "the species come from every locus, without anyone saying so:\n" + script);
         assertEquals(2, count(script, "speciesTree=speciesTree"), "one species tree, both genes");
         assertEquals(1, count(script, "PositiveReal populationSize ~"), "one population size across loci");
 
@@ -211,10 +209,10 @@ public class StarBeastTest {
 
         Param taxa = chosen.param("taxa");
         assertNotNull(taxa, "a prior over a tree still has to be told which taxa it spans");
+        assertTrue(taxa.isComponentValued(), "and it is chosen, not typed");
         assertEquals(speciesTree.dimension(), chosen.param("birthRate") == null ? null : speciesTree.dimension(),
                 "the prior keeps the length of what it is drawn at");
 
-        chooseTheSpeciesSet(analysis);
         String script = ScriptWriter.write(analysis);
         assertEquals(List.of(), Validator.check(library, script).all(), script);
     }
@@ -230,13 +228,14 @@ public class StarBeastTest {
     @Test
     void anAlignmentArgumentNamesALoadedPartition() {
         Analysis analysis = starbeast();
-        // The taxa that species() reduces, which is where an alignment is named. The set above it
-        // is a SpeciesTaxa, and a plain Taxa is no longer allowed to stand there.
-        Param taxa = analysis.treePrior().param("speciesTree").priorProperty().get()
-                .param("taxa").priorProperty().get().param("taxa");
+        // Take the species from one locus instead of all of them, which is the other species
+        // overload: it reduces a taxon set, and that is where an alignment is named.
+        Param taxa = analysis.treePrior().param("speciesTree").priorProperty().get().param("taxa");
+        Component ofOneSet = Component.nested(overload("species", "taxa"), library, false);
+        taxa.priorProperty().set(ofOneSet);
 
         Component ofOneAlignment = Component.nested(overload("taxa", "alignment"), library, false);
-        taxa.priorProperty().set(ofOneAlignment);
+        ofOneSet.param("taxa").priorProperty().set(ofOneAlignment);
 
         Param alignment = ofOneAlignment.param("alignment");
         assertFalse(alignment.isComponentValued(), "a partition is named, not built");
