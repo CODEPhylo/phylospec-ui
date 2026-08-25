@@ -353,23 +353,7 @@ public final class Library {
         return true;
     }
 
-    /**
-     * Whether a generator is generic in a type this UI cannot pin down.
-     *
-     * <p>Core's {@code IID} draws a {@code Vector<T>} from a {@code Distribution<T>}, and what
-     * {@code T} is depends on the value being drawn. Nothing here instantiates that, so offering it
-     * produces a distribution with no distribution inside it. An engine library can declare the
-     * concrete version in the meantime, which is what {@code libraries/beast28.json} does.
-     */
-    private boolean isGeneric(Generator generator) {
-        for (Argument argument : generator.getArguments()) {
-            String head = head(argument.getType());
-            String inner = inner(argument.getType());
-            if (unknown(head) || (inner != null && unknown(head(inner.split(";", 2)[0].trim())))) return true;
-        }
-        return false;
-    }
-
+    /** Whether a name is a type variable rather than a type the libraries declare. */
     private boolean unknown(String name) {
         return name != null && !name.isEmpty() && !types.containsKey(name)
                 && !types.containsKey(canonical(name));

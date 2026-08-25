@@ -214,6 +214,12 @@ tree is not accepted as a species tree.
 This belongs in core rather than here, as a `Taxa` and a tree parameterised by whether their tips
 are species or individuals. See CODEPhylo/phylospec#75.
 
+A type *property* would not do the same job. Declaring the tip kind as `Tree<;taxonType=species>`
+and requiring it on an argument is accepted whatever is passed, including a gene tree where a
+species tree is wanted, because a property on an argument is advisory: the same gap as the declared
+vector lengths above. A parameter is checked, and the check is what the tabs read to narrow a menu
+to one candidate.
+
 Nothing above is typed, and nothing below it is chosen twice. Setting one up, from an empty window:
 
 | Tab | What to do |
@@ -243,12 +249,15 @@ literal: a `Tree` declares `numNodes` among its properties and core offers no `n
 
 That `IID` is core's own, and it is generic: it draws a `Vector<T>` from a `Distribution<T>`. What
 `T` is comes from the value being drawn, so asking for a vector of positive reals makes `base` a
-`Distribution<PositiveReal>` and the choosers offer distributions over one. Two of core's generic
-components are still left out, for reasons that are theirs rather than ours. `Mixture` takes a
-`Vector<Distribution<T>>`, and there is no editor for a list whose elements are chosen. `Truncated`
-declares its `T` only in the generated type and in optional arguments, so a call never pins it down
-and the resolver refuses it, and its `lower` and `upper` default to `-Inf` and `+Inf`, which are not
-literals in the language.
+`Distribution<PositiveReal>` and the choosers offer distributions over one. An engine library can
+declare a generic component the same way, by listing its variables in `typeParameters` on the
+generator, as core does for `IID`, `subset` and `repeat`.
+
+Two of core's generic components are still left out, for reasons that are theirs rather than ours.
+`Mixture` takes a `Vector<Distribution<T>>`, and there is no editor for a list whose elements are
+chosen. `Truncated` declares its `T` only in the generated type and in optional arguments, so a call
+never pins it down and the resolver refuses it, and its `lower` and `upper` default to `-Inf` and
+`+Inf`, which are not literals in the language.
 
 The species tree needs no tab of its own. It is an estimated `Tree` argument, so it appears on the
 Priors tab like any other estimated value, and its `Yule` is chosen there.
