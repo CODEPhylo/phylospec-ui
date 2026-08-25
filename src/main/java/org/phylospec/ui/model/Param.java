@@ -66,12 +66,23 @@ public final class Param {
      * name is the engine's to choose.
      */
     public Param(Argument argument, boolean estimable, Library library) {
+        this(argument, estimable, library, null);
+    }
+
+    /**
+     * The same, with a length the component's constraints fix for this argument.
+     *
+     * <p>Core states a vector's length as a constraint, {@code baseFrequencies.num == 20}, which
+     * belongs to the component rather than to the argument, so it cannot be read from the argument
+     * alone. It is the spelling the resolver checks, so it wins over the other two.
+     */
+    public Param(Argument argument, boolean estimable, Library library, Integer constrainedLength) {
         this.name = argument.getName();
         this.type = argument.getType();
         this.description = argument.getDescription();
         this.required = Boolean.TRUE.equals(argument.getRequired());
         this.indicator = isIndicator(argument);
-        this.dimension = fixedDimension(argument);
+        this.dimension = constrainedLength != null ? constrainedLength : fixedDimension(argument);
         this.dimensionExpression = declaredExpression(argument, library);
         this.estimable = estimable && (indicator
                 || isEstimatableType(type, library, dimension != null || dimensionExpression != null));

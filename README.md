@@ -31,7 +31,7 @@ cd ../phylospec && mvn -N install && mvn -pl core/java -DskipTests install
 The first of those installs phylospec's parent pom, which `phylospec-core` needs and which building
 `core/java` alone does not provide. That build needs network access to fetch the Spotless plugin.
 
-Verified against phylospec `18f87260` (21 Aug 2026), component library 1.4.0.
+Verified against phylospec `b8e96901` (26 Aug 2026), component library 1.4.0.
 
 ## The tabs
 
@@ -344,13 +344,17 @@ frequencies and a guess otherwise. Core declares none, and that shows: `wag`, `j
 `Simplex baseFrequencies` of **twenty**, and get four. Adding `dimension` to those three in core
 would fix it, here and in every other tool reading the library.
 
-Two spellings say this: the schema's `dimension` field on the argument, and the type language's
-`num` property — `Simplex<;num=6>` — which is already how *generated* types say it. Both are read
-here, the property winning. Neither is enforced by the type resolver — re-checked on `21cba006`,
-having been checked on `256f2e40` and `5b5b9dc4` before it — so a tool that ignores them writes a
-wrong-length vector that still type-checks. `ValidatorTest` asserts that gap rather than the fix, so
-it fails when the resolver starts enforcing declared lengths, which is when this UI can stop sizing
-vectors itself. That is CODEPhylo/phylospec#74, still open.
+Three spellings say this, and the one core settled on is a **constraint** on the component:
+`baseFrequencies.num == 20` on `wag`. That is the spelling the resolver checks, since #77 landed, so
+it is the one to build from. Reading only the other two left every amino-acid model writing four
+frequencies where it wanted twenty, and being told so by the warning channel.
+
+The other two are the schema's `dimension` field on the argument, and the type language's
+`num` property — `Simplex<;num=6>` — which is already how *generated* types say it. All three are
+read here, the constraint winning, then the property, then the field. Neither of the other two is
+enforced, re-checked on `b8e96901`, so a tool reading only those writes a wrong-length vector that
+still type-checks. `ValidatorTest` asserts that gap rather than the fix, so it fails if they are
+enforced too. That half of CODEPhylo/phylospec#74 is still open; the constraint half landed in #77.
 
 What the resolver *does* check is a component's `constraints`: a comparison relating two arguments,
 such as `PhyloCTMC`'s `tree.numBranches == branchRates.num`. Seven core components carry them. See

@@ -12,6 +12,8 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import org.phylospec.components.Argument;
 import org.phylospec.components.ComponentLibrary;
@@ -448,6 +450,27 @@ public final class Library {
             if (halves.length == 2) properties.put(halves[0].trim(), halves[1].trim());
         }
         return properties;
+    }
+
+    /**
+     * The length a component's constraints fix for one of its arguments, or null.
+     *
+     * <p>Core says how long a vector is with a constraint, {@code baseFrequencies.num == 20} on
+     * {@code wag}, rather than with a {@code dimension} field or a {@code num} property. That is
+     * the spelling the resolver checks, so it is the one to build from: a tool that ignores it
+     * writes twenty frequencies as four and is told so, having had the answer all along.
+     */
+    public static Integer declaredLength(Generator generator, String argument) {
+        List<String> constraints = generator.getConstraints();
+        if (constraints == null) return null;
+
+        Pattern fixes = Pattern.compile("^\\s*" + Pattern.quote(argument)
+                + "\\s*\\.\\s*num\\s*==\\s*(\\d+)\\s*$");
+        for (String constraint : constraints) {
+            Matcher matcher = fixes.matcher(constraint);
+            if (matcher.matches()) return Integer.valueOf(matcher.group(1));
+        }
+        return null;
     }
 
     /**

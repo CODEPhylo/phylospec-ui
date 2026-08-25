@@ -174,7 +174,8 @@ public final class Component {
             // is not one of those: a Yule over an estimated species tree has to be told which taxa
             // it spans, because no partition is drawn on it.
             if (structural && WIRED.contains(argument.getName())) continue;
-            Param param = new Param(argument, argsEstimable && canBeStochastic(chosen, argument), library);
+            Param param = new Param(argument, argsEstimable && canBeStochastic(chosen, argument),
+                    library, Library.declaredLength(chosen, argument.getName()));
             if (needsNesting(param)) param.markNested();
             attachPriors(param);
             params.add(param);

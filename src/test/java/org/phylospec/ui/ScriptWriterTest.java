@@ -7,7 +7,9 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Function;
 
 import org.junit.jupiter.api.BeforeAll;
@@ -234,6 +236,34 @@ class ScriptWriterTest {
     }
 
     /**
+     * Core says how long a base-frequency vector is with a constraint on the component, such as
+     * {@code baseFrequencies.num == 20} on {@code wag}, rather than with a dimension on the
+     * argument. That is the spelling the resolver checks, so it is the one to build from: reading
+     * only the other two left every amino-acid model writing four frequencies where it wanted
+     * twenty, and being told so.
+     */
+    @Test
+    void aLengthFixedByAConstraintSizesTheVector() {
+        Map<String, Integer> lengths = new LinkedHashMap<>();
+        lengths.put("hky", 4);
+        lengths.put("gtr", 4);
+        lengths.put("wag", 20);
+        lengths.put("lg", 20);
+        lengths.put("gy94", 61);
+
+        lengths.forEach((model, length) -> {
+            Analysis analysis = analysisWithData();
+            analysis.substitutionModel().generatorProperty().set(library.overloads(model).get(0));
+
+            Param frequencies = analysis.substitutionModel().param("baseFrequencies");
+            assertEquals(length, frequencies.dimension(), model + " asks for " + length);
+
+            String script = ScriptWriter.write(analysis);
+            assertEquals(List.of(), Validator.check(library, script).all(), script);
+        });
+    }
+
+    /**
      * The Priors tab offers every distribution whose support fits the value being estimated. Choosing
      * any of them must still type-check — the support test is the GUI's own, so this is where it would
      * show up if it were more permissive than the type resolver.
@@ -257,8 +287,11 @@ class ScriptWriterTest {
                         Analysis analysis = analysisWith(slot, generator);
                         Param param = estimable(slot.component().apply(analysis)).get(index);
                         param.estimateProperty().set(true);
-                        // The Priors tab builds the chosen distribution exactly this way.
-                        param.priorProperty().set(Component.nested(prior, library, false));
+                        // The Priors tab builds the chosen distribution exactly this way: a prior
+                        // rather than a nested component, carrying the length of what it draws.
+                        param.priorProperty().set(Component.sized(
+                                Component.prior(prior, param.dimension(), library, param.priorSupport()),
+                                param));
                         checked++;
                         check(failures, analysis, label + ": " + param.name() + " ~ " + prior.getName());
                     }
