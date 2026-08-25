@@ -384,7 +384,9 @@ public final class Library {
                 String produced = generator.getGeneratedType();
                 if (!wanted.equals(head(produced))) continue;
                 String concrete = substitute(produced, unify(produced, type));
-                if (supplies(parameterOf(concrete), parameter)) found.add(generator);
+                if (!supplies(parameterOf(concrete), parameter)) continue;
+                if (!agreesOnProperties(concrete, type)) continue;
+                found.add(generator);
             }
         }
         return found;
@@ -406,6 +408,46 @@ public final class Library {
     private boolean supplies(String produced, String wanted) {
         if (wanted == null || produced == null) return true;
         return isSubtype(produced, wanted);
+    }
+
+    /**
+     * Whether what a generator produces contradicts what an argument asks for, property by
+     * property.
+     *
+     * <p>A type property is not checked by the resolver: an argument declared
+     * {@code Tree<;taxonType=species>} accepts a tree of individuals, exactly as an argument
+     * declared {@code Simplex<;num=6>} accepts four elements. So a chooser that ignores properties
+     * offers the wrong component and nothing downstream objects.
+     *
+     * <p>Only settled values are compared. A property given as an expression, {@code num=num.value}
+     * or {@code num=speciesTree.numBranches}, says what it will be rather than what it is, and two
+     * of those cannot disagree yet.
+     */
+    private static boolean agreesOnProperties(String produced, String wanted) {
+        for (Map.Entry<String, String> asked : propertiesOf(wanted).entrySet()) {
+            String offered = propertiesOf(produced).get(asked.getKey());
+            if (offered == null || settled(offered) == null || settled(asked.getValue()) == null) continue;
+            if (!offered.equals(asked.getValue())) return false;
+        }
+        return true;
+    }
+
+    /** A property value that is a value rather than a promise of one, or null. */
+    private static String settled(String value) {
+        return value == null || value.contains(".") || value.contains("(") ? null : value;
+    }
+
+    private static Map<String, String> propertiesOf(String type) {
+        Map<String, String> properties = new LinkedHashMap<>();
+        String inner = inner(type);
+        int semicolon = inner == null ? -1 : inner.indexOf(';');
+        if (semicolon < 0) return properties;
+
+        for (String property : inner.substring(semicolon + 1).split(",")) {
+            String[] halves = property.split("=", 2);
+            if (halves.length == 2) properties.put(halves[0].trim(), halves[1].trim());
+        }
+        return properties;
     }
 
     /**
