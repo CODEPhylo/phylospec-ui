@@ -52,6 +52,7 @@ public final class Library {
     private final Map<String, List<Generator>> generators = new LinkedHashMap<>();
     private final Map<String, Type> types = new LinkedHashMap<>();
     private final Map<String, List<Generator>> byRole = new LinkedHashMap<>();
+    private final boolean explicitImports;
 
     /**
      * A resolver over a second, independently loaded copy of the libraries.
@@ -62,9 +63,11 @@ public final class Library {
      */
     private final ComponentResolver validationResolver;
 
-    private Library(List<ComponentLibrary> forUi, List<ComponentLibrary> forValidation) {
+    private Library(List<ComponentLibrary> forUi, List<ComponentLibrary> forValidation,
+            boolean explicitImports) {
+        this.explicitImports = explicitImports;
         this.validationResolver = new ComponentResolver(forValidation);
-        importEngineNamespaces(forValidation);
+        if (!explicitImports) importEngineNamespaces(forValidation);
 
         for (ComponentLibrary library : forUi) {
             for (Type type : library.getTypes()) {
@@ -95,7 +98,7 @@ public final class Library {
      */
     public static Library load(List<Path> engineLibraries) {
         try {
-            return new Library(read(engineLibraries), read(engineLibraries));
+            return new Library(read(engineLibraries), read(engineLibraries), false);
         } catch (IOException e) {
             throw new UncheckedIOException("Could not load the PhyloSpec component libraries", e);
         }
@@ -103,7 +106,7 @@ public final class Library {
 
     /** Component libraries supplied by another discovery mechanism. */
     public static Library fromComponents(List<ComponentLibrary> componentLibraries) {
-        return new Library(copy(componentLibraries), copy(componentLibraries));
+        return new Library(copy(componentLibraries), copy(componentLibraries), true);
     }
 
     private static List<ComponentLibrary> copy(List<ComponentLibrary> componentLibraries) {
@@ -125,9 +128,8 @@ public final class Library {
     }
 
     /**
-     * Makes an engine library's components resolvable by their plain name during validation. The
-     * resolver imports the {@code phylospec} namespace itself; any other has to be asked for, or a
-     * script calling one of its components fails to resolve.
+     * Keeps the original file-based library mode compatible. That mode predates package discovery
+     * and makes every supplied engine namespace available without writing {@code use} statements.
      */
     private void importEngineNamespaces(List<ComponentLibrary> libraries) {
         Set<String> roots = new LinkedHashSet<>();
@@ -146,6 +148,40 @@ public final class Library {
         if (namespace == null || namespace.isBlank()) return null;
         int dot = namespace.indexOf('.');
         return dot < 0 ? namespace : namespace.substring(0, dot);
+    }
+
+    boolean usesExplicitImports() {
+        return explicitImports;
+    }
+
+    /**
+     * External namespaces a script must import before it can use this generator and the types in
+     * its signature. Core components need no import because the resolver provides {@code
+     * phylospec} by default.
+     */
+    Set<String> namespacesFor(Generator generator) {
+        Set<String> found = new LinkedHashSet<>();
+        addExternal(found, generator.getNamespace());
+        addTypeNamespaces(found, generator.getGeneratedType());
+        for (Argument argument : generator.getArguments()) {
+            addTypeNamespaces(found, argument.getType());
+        }
+        return found;
+    }
+
+    private void addTypeNamespaces(Set<String> into, String expression) {
+        if (expression == null) return;
+        Matcher names = Pattern.compile("[A-Za-z][A-Za-z0-9]*").matcher(expression);
+        while (names.find()) {
+            Type type = types.get(names.group());
+            if (type != null) addExternal(into, type.getNamespace());
+        }
+    }
+
+    private static void addExternal(Set<String> into, String namespace) {
+        if (namespace == null || namespace.isBlank()
+                || namespace.equals("phylospec") || namespace.startsWith("phylospec.")) return;
+        into.add(namespace);
     }
 
     /**

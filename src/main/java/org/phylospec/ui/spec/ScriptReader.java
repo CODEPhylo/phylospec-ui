@@ -120,6 +120,8 @@ public final class ScriptReader {
 
         boolean sawModel = false;
         for (Stmt statement : statements) {
+            // Namespace imports affect name resolution, but do not correspond to a GUI field.
+            if (statement instanceof Stmt.Import) continue;
             switch (blockOf(statement)) {
                 case "data" -> readDataStatement(analysis, statement);
                 case "model" -> sawModel |= readModelStatement(analysis, statement);

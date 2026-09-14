@@ -45,12 +45,36 @@ public final class ScriptWriter {
         reserveNames();
 
         StringBuilder out = new StringBuilder();
+        Set<String> namespaces = importedNamespaces();
+        for (String namespace : namespaces) {
+            out.append("use ").append(namespace).append('\n');
+        }
+        if (!namespaces.isEmpty()) out.append('\n');
         block(out, "data", dataStatements());
         out.append('\n');
         block(out, "model", modelStatements());
         out.append('\n');
         block(out, "mcmc", mcmcStatements());
         return out.toString();
+    }
+
+    /** Imports exactly the external components selected in this analysis, including nested ones. */
+    private Set<String> importedNamespaces() {
+        Set<String> found = new LinkedHashSet<>();
+        if (!analysis.library().usesExplicitImports()) return found;
+        Set<Component> visited = Collections.newSetFromMap(new IdentityHashMap<>());
+        for (Component component : analysis.components()) {
+            collectNamespaces(component, found, visited);
+        }
+        return found;
+    }
+
+    private void collectNamespaces(Component component, Set<String> into, Set<Component> visited) {
+        if (component == null || component.generator() == null || !visited.add(component)) return;
+        into.addAll(analysis.library().namespacesFor(component.generator()));
+        for (Param param : component.params()) {
+            collectNamespaces(param.priorProperty().get(), into, visited);
+        }
     }
 
     /**
