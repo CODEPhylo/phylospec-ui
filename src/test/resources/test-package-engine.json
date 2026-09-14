@@ -1,0 +1,14 @@
+{
+  "name": "test-package",
+  "engineVersion": "1.0.0",
+  "dependsOn": ["beast2"],
+  "generators": [
+    {
+      "name": "testPopulationFunction",
+      "namespace": "test.functions.coalescent",
+      "arguments": []
+    }
+  ],
+  "installationInstructions": "Install the test package.",
+  "installationWebsite": "https://example.org/test-package"
+}

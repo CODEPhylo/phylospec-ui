@@ -1,0 +1,19 @@
+{
+  "componentLibrary": {
+    "name": "Test package components",
+    "version": "1.0.0",
+    "engine": "test-package",
+    "engineVersion": "1.0.0",
+    "description": "Components used to test package discovery.",
+    "types": [],
+    "generators": [
+      {
+        "name": "testPopulationFunction",
+        "namespace": "test.functions.coalescent",
+        "description": "A population function supplied by a test package.",
+        "generatedType": "PopulationFunction",
+        "arguments": []
+      }
+    ]
+  }
+}
