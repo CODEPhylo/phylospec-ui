@@ -9,8 +9,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.nio.file.Path;
 import java.util.List;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.phylospec.components.EngineSpecificationSchema;
 import org.phylospec.components.Generator;
 import org.phylospec.ui.model.Analysis;
 import org.phylospec.ui.model.Param;
@@ -52,6 +55,20 @@ public class EngineSupportTest {
         assertFalse(nothing.claimsAnything());
         assertTrue(nothing.supports(generator("PhyloOU", 0)), "an unclaimed engine forbids nothing");
         assertNull(nothing.canBeStochastic(generator("hky", 0), "kappa"), "and has no opinion");
+    }
+
+    @Test
+    void acceptsSpecificationsFromDiscoveryWithoutChangingSupportLogic() throws Exception {
+        EngineSpecificationSchema specification = new ObjectMapper().readValue(
+                BEAST2.toFile(), EngineSpecificationSchema.class);
+
+        EngineSupport discovered = EngineSupport.fromSpecifications(List.of(specification));
+
+        assertEquals(beast2.engines(), discovered.engines());
+        assertEquals(beast2.supports(generator("hky", 0)),
+                discovered.supports(generator("hky", 0)));
+        assertEquals(beast2.supports(generator("PhyloOU", 0)),
+                discovered.supports(generator("PhyloOU", 0)));
     }
 
     @Test

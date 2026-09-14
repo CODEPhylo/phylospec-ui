@@ -16,6 +16,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import org.phylospec.components.Argument;
+import org.phylospec.components.ComponentLibrary;
+import org.phylospec.components.ComponentResolver;
 import org.phylospec.components.Generator;
 import org.phylospec.ui.model.Analysis;
 import org.phylospec.ui.model.Component;
@@ -222,6 +224,22 @@ class EngineLibraryTest {
             assertTrue(script.contains("Tree tree ~ " + treePrior + "("), script);
             assertEquals(List.of(), Validator.check(withBeast, script).all(), treePrior);
         }
+    }
+
+    @Test
+    void acceptsDiscoveredComponentsWithoutMutatingTheirNames() throws IOException {
+        List<ComponentLibrary> components = ComponentResolver.loadCoreComponentLibraries();
+        Library discovered = Library.fromComponents(components);
+
+        assertEquals(core.overloads("hky").size(), discovered.overloads("hky").size());
+        assertEquals("PositiveReal",
+                components.getFirst().getGenerators().stream()
+                        .filter(generator -> "hky".equals(generator.getName()))
+                        .findFirst()
+                        .orElseThrow()
+                        .getArguments()
+                        .getFirst()
+                        .getType());
     }
 
     /**

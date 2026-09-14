@@ -15,6 +15,8 @@ import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import org.phylospec.components.Argument;
 import org.phylospec.components.ComponentLibrary;
 import org.phylospec.components.ComponentResolver;
@@ -97,6 +99,18 @@ public final class Library {
         } catch (IOException e) {
             throw new UncheckedIOException("Could not load the PhyloSpec component libraries", e);
         }
+    }
+
+    /** Component libraries supplied by another discovery mechanism. */
+    public static Library fromComponents(List<ComponentLibrary> componentLibraries) {
+        return new Library(copy(componentLibraries), copy(componentLibraries));
+    }
+
+    private static List<ComponentLibrary> copy(List<ComponentLibrary> componentLibraries) {
+        ObjectMapper mapper = new ObjectMapper();
+        return componentLibraries.stream()
+                .map(library -> mapper.convertValue(library, ComponentLibrary.class))
+                .toList();
     }
 
     private static List<ComponentLibrary> read(List<Path> engineLibraries) throws IOException {

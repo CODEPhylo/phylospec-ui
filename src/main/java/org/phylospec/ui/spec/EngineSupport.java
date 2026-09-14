@@ -101,6 +101,12 @@ public final class EngineSupport {
         return new EngineSupport(List.of());
     }
 
+    /** Engine specifications supplied by another discovery mechanism. */
+    public static EngineSupport fromSpecifications(
+            List<EngineSpecificationSchema> specifications) {
+        return new EngineSupport(List.copyOf(specifications));
+    }
+
     /** The engines described by the given specification files, taken together. */
     public static EngineSupport load(List<Path> specifications) {
         ObjectMapper mapper = new ObjectMapper();
@@ -112,7 +118,7 @@ public final class EngineSupport {
                 throw new UncheckedIOException("Could not read the engine specification " + path, e);
             }
         }
-        return new EngineSupport(read);
+        return fromSpecifications(read);
     }
 
     /** Whether any specification was loaded at all. */
