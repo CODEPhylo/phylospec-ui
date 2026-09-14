@@ -89,8 +89,7 @@ public final class ParamRow {
         Library library = analysis.library();
         return param.isComponentValued()
                 ? componentEditor(analysis, candidatesFor(library, param), param.priorProperty(),
-                        chosen -> Component.nested(chosen, library, false, EngineSupport.unclaimed(),
-                                param.isDistributionValued() ? param.priorSupport() : param.type()))
+                        chosen -> param.nestedChoice(chosen, library, analysis.support()))
                 : valueField(param);
     }
 

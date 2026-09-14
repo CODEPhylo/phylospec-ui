@@ -176,7 +176,7 @@ public final class Component {
             if (structural && WIRED.contains(argument.getName())) continue;
             Param param = new Param(argument, argsEstimable && canBeStochastic(chosen, argument),
                     library, Library.declaredLength(chosen, argument.getName()));
-            if (needsNesting(param)) param.markNested();
+            if (needsNesting(param)) param.markNested(argsEstimable);
             attachPriors(param);
             params.add(param);
         }

@@ -89,6 +89,26 @@ class ScriptWriterTest {
     }
 
     @Test
+    void switchingANestedFunctionKeepsItsArgumentsEstimable() {
+        Analysis analysis = analysisWithData();
+        Generator coalescent = library.overloads("Coalescent").stream()
+                .filter(generator -> generator.getArguments().stream()
+                        .anyMatch(argument -> "populationSize".equals(argument.getName())
+                                && "PopulationFunction".equals(argument.getType())))
+                .findFirst()
+                .orElseThrow();
+        analysis.treePrior().generatorProperty().set(coalescent);
+
+        Param populationSize = analysis.treePrior().param("populationSize");
+        Generator exponential = library.overloads("exponentialPopulationFunction").getFirst();
+        Component replacement =
+                populationSize.nestedChoice(exponential, library, analysis.support());
+
+        assertTrue(replacement.param("growthRate").estimable());
+        assertTrue(replacement.param("populationSize").estimable());
+    }
+
+    @Test
     void tipDatesBecomeAParseArgument() {
         Analysis analysis = analysisWithData();
         analysis.partitions().get(0).useTipDatesProperty().set(true);

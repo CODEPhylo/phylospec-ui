@@ -15,6 +15,8 @@ import javafx.beans.property.SimpleStringProperty;
 import javafx.beans.property.StringProperty;
 
 import org.phylospec.components.Argument;
+import org.phylospec.components.Generator;
+import org.phylospec.ui.spec.EngineSupport;
 import org.phylospec.ui.spec.Library;
 
 /**
@@ -50,6 +52,9 @@ public final class Param {
 
     /** Set when this argument has to be built by calling something rather than typed in. */
     private boolean nested;
+
+    /** Whether arguments of the selected nested component may themselves be estimated. */
+    private boolean nestedArgsEstimable;
 
     /** The variable name used in the generated script; set by the writer to keep names unique. */
     private final StringProperty variable = new SimpleStringProperty();
@@ -271,8 +276,26 @@ public final class Param {
         return isDistributionValued() || nested;
     }
 
-    void markNested() {
+    void markNested(boolean argsEstimable) {
         this.nested = true;
+        this.nestedArgsEstimable = argsEstimable;
+    }
+
+    /**
+     * Builds a replacement for this nested value without losing the estimation policy inherited
+     * from its parent component.
+     *
+     * <p>The population function inside a coalescent is the motivating case. Switching from the
+     * default population function to one supplied by a package must not turn all of the new
+     * function's numeric arguments into fixed literals.
+     */
+    public Component nestedChoice(
+            Generator generator, Library library, EngineSupport support) {
+        if (!nested) {
+            throw new IllegalStateException(name + " is not a component-valued argument.");
+        }
+        return Component.nested(
+                generator, library, nestedArgsEstimable, support, type);
     }
 
     /** The type a prior on this param must support. */
