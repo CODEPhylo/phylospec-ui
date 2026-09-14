@@ -47,6 +47,7 @@ import org.phylospec.ui.panel.PriorsPanel;
 import org.phylospec.ui.panel.TipDatesPanel;
 import org.phylospec.ui.spec.EngineSupport;
 import org.phylospec.ui.spec.Library;
+import org.phylospec.ui.spec.PackageMetadata;
 import org.phylospec.ui.spec.ScriptReader;
 import org.phylospec.ui.spec.ScriptWriter;
 import org.phylospec.ui.spec.Validator;
@@ -83,8 +84,7 @@ public class PhyloSpecUI extends Application {
     @Override
     public void start(Stage stage) {
         commandLine = CommandLine.parse(getParameters().getRaw());
-        analysis = new Analysis(Library.load(commandLine.libraries()),
-                EngineSupport.load(commandLine.engines()));
+        analysis = createAnalysis(commandLine);
         loadAlignmentsNamedOnTheCommandLine();
 
         TabPane tabs = buildTabs();
@@ -111,6 +111,18 @@ public class PhyloSpecUI extends Application {
         stage.show();
 
         startRefreshing();
+    }
+
+    /** Uses explicit metadata files when supplied, otherwise discovers installed adapters. */
+    private static Analysis createAnalysis(CommandLine commandLine) {
+        if (!commandLine.libraries().isEmpty() || !commandLine.engines().isEmpty()) {
+            return new Analysis(
+                    Library.load(commandLine.libraries()),
+                    EngineSupport.load(commandLine.engines()));
+        }
+
+        PackageMetadata metadata = PackageMetadata.discover();
+        return new Analysis(metadata.library(), metadata.support());
     }
 
     /** Alignments can be named on the command line, the way BEAUti accepts them. */
