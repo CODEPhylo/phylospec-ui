@@ -118,6 +118,19 @@ class EngineLibraryTest {
                         .map(Generator::getName).distinct().toList());
     }
 
+    @Test
+    void sameNamedCoalescentOverloadsAreDistinguishedByPopulationType() {
+        List<Generator> coalescents = core.overloads("Coalescent");
+
+        assertEquals(
+                List.of(
+                        "Coalescent (populationSize: PositiveReal)",
+                        "Coalescent (populationSize: PopulationFunction)"),
+                coalescents.stream()
+                        .map(generator -> Component.describe(generator, coalescents))
+                        .toList());
+    }
+
     /** Distributions over a vector of something other than a rate are not site rates. */
     @Test
     void unrelatedVectorDistributionsFillNoTab() {

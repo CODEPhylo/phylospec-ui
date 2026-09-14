@@ -306,11 +306,27 @@ public final class Component {
      */
     public static String describe(Generator generator, List<Generator> among) {
         String name = generator.getName();
-        boolean overloaded = among.stream().filter(g -> g.getName().equals(name)).count() > 1;
-        if (!overloaded) return name;
-        String args = generator.getArguments().stream()
+        List<Generator> overloads = among.stream()
+                .filter(candidate -> candidate.getName().equals(name))
+                .toList();
+        if (overloads.size() < 2) return name;
+
+        List<Argument> visible = generator.getArguments().stream()
                 .filter(a -> !WIRED.contains(a.getName()))
-                .map(Argument::getName)
+                .toList();
+        List<String> argumentNames = visible.stream().map(Argument::getName).toList();
+        boolean namesAreAmbiguous = overloads.stream()
+                .map(candidate -> candidate.getArguments().stream()
+                        .filter(argument -> !WIRED.contains(argument.getName()))
+                        .map(Argument::getName)
+                        .toList())
+                .filter(argumentNames::equals)
+                .count() > 1;
+
+        String args = visible.stream()
+                .map(argument -> namesAreAmbiguous
+                        ? argument.getName() + ": " + argument.getType()
+                        : argument.getName())
                 .collect(Collectors.joining(", "));
         return name + " (" + args + ")";
     }
