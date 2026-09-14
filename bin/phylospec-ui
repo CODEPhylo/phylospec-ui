@@ -5,10 +5,16 @@ set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 classes="$here/target/classes"
 classpath_file="$here/target/classpath.txt"
+adapter_path="${PHYLOSPEC_ADAPTER_PATH:-}"
 
 if [[ ! -d "$classes" || ! -f "$classpath_file" ]]; then
     echo "Building..." >&2
     (cd "$here" && mvn -q -o package -DskipTests)
 fi
 
-exec java -cp "$classes:$(cat "$classpath_file")" org.phylospec.ui.Launcher "$@"
+runtime_classpath="$classes:$(cat "$classpath_file")"
+if [[ -n "$adapter_path" ]]; then
+    runtime_classpath="$runtime_classpath:$adapter_path"
+fi
+
+exec java -cp "$runtime_classpath" org.phylospec.ui.Launcher "$@"
