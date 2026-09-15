@@ -3,6 +3,8 @@ package org.phylospec.ui;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.net.URL;
+import java.net.URLClassLoader;
 import java.nio.file.Path;
 import java.util.List;
 
@@ -19,6 +21,16 @@ import org.phylospec.ui.spec.ScriptWriter;
 import org.phylospec.ui.spec.Validator;
 
 class PackageMetadataTest {
+
+    @Test
+    void discoversOnlyAdaptersVisibleToTheSuppliedClassLoader() throws Exception {
+        try (URLClassLoader isolated = new URLClassLoader(new URL[0], null)) {
+            PackageMetadata metadata = PackageMetadata.discover(isolated);
+
+            assertEquals(List.of(), metadata.engines());
+            assertEquals(List.of(), metadata.library().overloads("testPopulationFunction"));
+        }
+    }
 
     @Test
     void discoversComponentAndEngineMetadataFromTheSameAdapter() {

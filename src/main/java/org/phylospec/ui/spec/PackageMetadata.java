@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.ServiceLoader;
 
 import org.phylospec.components.ComponentLibrary;
@@ -25,8 +26,14 @@ public final class PackageMetadata {
 
     /** Discovers every tile-library adapter visible on the runtime classpath. */
     public static PackageMetadata discover() {
+        return discover(Thread.currentThread().getContextClassLoader());
+    }
+
+    /** Discovers adapters visible to a caller-supplied runtime class loader. */
+    public static PackageMetadata discover(ClassLoader classLoader) {
         List<TileLibrary<?>> libraries = new ArrayList<>();
-        ServiceLoader.load(TileLibrary.class).forEach(libraries::add);
+        ServiceLoader.load(TileLibrary.class, Objects.requireNonNull(classLoader))
+                .forEach(libraries::add);
         return fromLibraries(libraries);
     }
 
