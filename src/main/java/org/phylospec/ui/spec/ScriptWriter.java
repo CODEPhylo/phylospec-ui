@@ -437,13 +437,18 @@ public final class ScriptWriter {
     private List<String> mcmcStatements() {
         List<String> statements = new ArrayList<>();
         statements.add("Integer chainLength = " + analysis.chainLengthProperty().get());
-        statements.add("Integer logEvery = " + analysis.logEveryProperty().get());
-        statements.add("String logFile = " + quote(analysis.logFileProperty().get()));
+        statements.add("Integer defaultLogEvery = " + analysis.logEveryProperty().get());
+        statements.add("String outputPrefix = " + quote(outputPrefix(analysis.logFileProperty().get())));
         String seed = analysis.seedProperty().get();
         if (seed != null && !seed.isBlank()) {
             statements.add("Integer randomSeed = " + seed.trim());
         }
         return statements;
+    }
+
+    /** Converts the trace-file field to the prefix shared by trace, tree and state output. */
+    private static String outputPrefix(String logFile) {
+        return logFile.endsWith(".log") ? logFile.substring(0, logFile.length() - 4) : logFile;
     }
 
     // ------------------------------------------------------------ argument

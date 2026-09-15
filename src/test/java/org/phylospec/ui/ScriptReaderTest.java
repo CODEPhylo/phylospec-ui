@@ -227,11 +227,22 @@ class ScriptReaderTest {
         analysis.seedProperty().set("42");
         assertRoundTrips(analysis, "mcmc settings");
 
-        Analysis reloaded = ScriptReader.read(library, ScriptWriter.write(analysis));
+        String written = ScriptWriter.write(analysis);
+        assertTrue(written.contains("Integer defaultLogEvery = 500"));
+        assertTrue(written.contains("String outputPrefix = \"run1\""));
+
+        Analysis reloaded = ScriptReader.read(library, written);
         assertEquals("5000000", reloaded.chainLengthProperty().get());
         assertEquals("500", reloaded.logEveryProperty().get());
         assertEquals("run1.log", reloaded.logFileProperty().get());
         assertEquals("42", reloaded.seedProperty().get());
+
+        String legacy = written
+                .replace("Integer defaultLogEvery = 500", "Integer logEvery = 500")
+                .replace("String outputPrefix = \"run1\"", "String logFile = \"run1.log\"");
+        Analysis legacyReloaded = ScriptReader.read(library, legacy);
+        assertEquals("500", legacyReloaded.logEveryProperty().get());
+        assertEquals("run1.log", legacyReloaded.logFileProperty().get());
     }
 
     @Test

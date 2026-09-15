@@ -573,7 +573,8 @@ public final class ScriptReader {
         String value = text(assignment.expression, assignment.name);
         switch (assignment.name) {
             case "chainLength" -> analysis.chainLengthProperty().set(value);
-            case "logEvery" -> analysis.logEveryProperty().set(value);
+            case "defaultLogEvery", "logEvery" -> analysis.logEveryProperty().set(value);
+            case "outputPrefix" -> analysis.logFileProperty().set(value + ".log");
             case "logFile" -> analysis.logFileProperty().set(value);
             case "randomSeed" -> analysis.seedProperty().set(value);
             default -> throw new Unsupported("Unsupported mcmc setting: " + assignment.name + ".");
