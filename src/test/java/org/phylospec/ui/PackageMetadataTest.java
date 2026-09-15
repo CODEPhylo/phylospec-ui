@@ -4,12 +4,19 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.io.IOException;
 import java.net.URL;
 import java.net.URLClassLoader;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Collections;
 import java.util.List;
+import java.util.jar.JarEntry;
+import java.util.jar.JarOutputStream;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.phylospec.components.Generator;
 import org.phylospec.ui.model.Analysis;
 import org.phylospec.ui.model.Component;
@@ -22,6 +29,9 @@ import org.phylospec.ui.spec.ScriptWriter;
 import org.phylospec.ui.spec.Validator;
 
 class PackageMetadataTest {
+
+    private static final String TILE_LIBRARY_SERVICE =
+            "META-INF/services/org.phylospec.tiling.TileLibrary";
 
     @Test
     void discoversOnlyAdaptersVisibleToTheSuppliedClassLoader() throws Exception {
@@ -39,6 +49,37 @@ class PackageMetadataTest {
                 () -> PackageMetadata.discover(List.of(Path.of("missing-adapter.jar"))));
 
         assertTrue(exception.getMessage().contains("missing-adapter.jar"));
+    }
+
+    @Test
+    void discoversAdapterJarsInsideADirectory(@TempDir Path directory) throws Exception {
+        Path adapter = directory.resolve("test-adapter.jar");
+        try (JarOutputStream jar = new JarOutputStream(Files.newOutputStream(adapter))) {
+            jar.putNextEntry(new JarEntry(TILE_LIBRARY_SERVICE));
+            jar.write("org.phylospec.ui.spec.TestTileLibrary\n"
+                    .getBytes(StandardCharsets.UTF_8));
+            jar.closeEntry();
+        }
+
+        ClassLoader original = Thread.currentThread().getContextClassLoader();
+        ClassLoader withoutParentServices = new ClassLoader(original) {
+            @Override
+            public java.util.Enumeration<URL> getResources(String name) throws IOException {
+                return TILE_LIBRARY_SERVICE.equals(name)
+                        ? Collections.emptyEnumeration()
+                        : super.getResources(name);
+            }
+        };
+
+        Thread.currentThread().setContextClassLoader(withoutParentServices);
+        try {
+            PackageMetadata metadata = PackageMetadata.discover(List.of(directory));
+            assertEquals(List.of("test-package"), metadata.engines().stream()
+                    .map(engine -> engine.getName())
+                    .toList());
+        } finally {
+            Thread.currentThread().setContextClassLoader(original);
+        }
     }
 
     @Test

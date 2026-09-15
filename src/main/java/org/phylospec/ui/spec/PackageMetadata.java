@@ -73,12 +73,7 @@ public final class PackageMetadata {
 
     /** Discovers adapters from additional JAR files or compiled-classes directories. */
     public static PackageMetadata discover(List<Path> adapterPaths) {
-        List<Path> paths = List.copyOf(adapterPaths);
-        paths.forEach(path -> {
-            if (!Files.exists(path)) {
-                throw new IllegalArgumentException("Adapter path does not exist: " + path);
-            }
-        });
+        List<Path> paths = expand(List.copyOf(adapterPaths));
 
         URL[] urls = paths.stream().map(PackageMetadata::url).toArray(URL[]::new);
         ClassLoader parent = Thread.currentThread().getContextClassLoader();
@@ -87,6 +82,30 @@ public final class PackageMetadata {
         } catch (IOException exception) {
             throw new UncheckedIOException("Could not close the package adapter loader", exception);
         }
+    }
+
+    /** Includes a classes directory itself and every JAR immediately inside it. */
+    private static List<Path> expand(List<Path> adapterPaths) {
+        List<Path> expanded = new ArrayList<>();
+        for (Path supplied : adapterPaths) {
+            Path path = supplied.toAbsolutePath().normalize();
+            if (!Files.exists(path)) {
+                throw new IllegalArgumentException("Adapter path does not exist: " + supplied);
+            }
+            expanded.add(path);
+
+            if (!Files.isDirectory(path)) continue;
+            try (var entries = Files.list(path)) {
+                entries.filter(Files::isRegularFile)
+                        .filter(entry -> entry.getFileName().toString().endsWith(".jar"))
+                        .sorted()
+                        .forEach(expanded::add);
+            } catch (IOException exception) {
+                throw new UncheckedIOException(
+                        "Could not inspect package adapter directory: " + path, exception);
+            }
+        }
+        return expanded.stream().distinct().toList();
     }
 
     private static URL url(Path path) {
