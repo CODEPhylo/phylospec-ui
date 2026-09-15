@@ -67,6 +67,7 @@ public class PhyloSpecUI extends Application {
     /** Names an extra component library to load beside core. */
     private static final String LIBRARY_FLAG = "--library";
     private static final String ENGINE_FLAG = "--engine";
+    private static final String ADAPTER_PATH_FLAG = "--adapter-path";
 
     private CommandLine commandLine;
     private Analysis analysis;
@@ -121,7 +122,9 @@ public class PhyloSpecUI extends Application {
                     EngineSupport.load(commandLine.engines()));
         }
 
-        PackageMetadata metadata = PackageMetadata.discover();
+        PackageMetadata metadata = commandLine.adapterPaths().isEmpty()
+                ? PackageMetadata.discover()
+                : PackageMetadata.discover(commandLine.adapterPaths());
         return new Analysis(metadata.library(), metadata.support());
     }
 
@@ -136,13 +139,19 @@ public class PhyloSpecUI extends Application {
     /**
      * What the command line asked for: engine component libraries, given as {@code --library <file>}
      * or {@code --library=<file>}, engine specifications, given the same two ways as
-     * {@code --engine}, and alignments, given bare.
+     * {@code --engine}, package adapter class paths given as {@code --adapter-path}, and
+     * alignments, given bare.
      */
-    private record CommandLine(List<Path> libraries, List<Path> engines, List<String> alignments) {
+    record CommandLine(
+            List<Path> libraries,
+            List<Path> engines,
+            List<Path> adapterPaths,
+            List<String> alignments) {
 
         static CommandLine parse(List<String> raw) {
             List<Path> libraries = new ArrayList<>();
             List<Path> engines = new ArrayList<>();
+            List<Path> adapterPaths = new ArrayList<>();
             List<String> alignments = new ArrayList<>();
             for (int i = 0; i < raw.size(); i++) {
                 String argument = raw.get(i);
@@ -154,11 +163,22 @@ public class PhyloSpecUI extends Application {
                     engines.add(Path.of(argument.substring(ENGINE_FLAG.length() + 1)));
                 } else if (argument.equals(ENGINE_FLAG) && i + 1 < raw.size()) {
                     engines.add(Path.of(raw.get(++i)));
+                } else if (argument.startsWith(ADAPTER_PATH_FLAG + "=")) {
+                    addAdapterPaths(adapterPaths,
+                            argument.substring(ADAPTER_PATH_FLAG.length() + 1));
+                } else if (argument.equals(ADAPTER_PATH_FLAG) && i + 1 < raw.size()) {
+                    addAdapterPaths(adapterPaths, raw.get(++i));
                 } else if (!argument.startsWith("--")) {
                     alignments.add(argument);
                 }
             }
-            return new CommandLine(libraries, engines, alignments);
+            return new CommandLine(libraries, engines, adapterPaths, alignments);
+        }
+
+        private static void addAdapterPaths(List<Path> paths, String classPath) {
+            for (String entry : classPath.split(java.util.regex.Pattern.quote(File.pathSeparator))) {
+                if (!entry.isBlank()) paths.add(Path.of(entry));
+            }
         }
     }
 

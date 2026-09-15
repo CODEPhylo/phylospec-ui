@@ -1,6 +1,7 @@
 package org.phylospec.ui;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.net.URL;
@@ -30,6 +31,14 @@ class PackageMetadataTest {
             assertEquals(List.of(), metadata.engines());
             assertEquals(List.of(), metadata.library().overloads("testPopulationFunction"));
         }
+    }
+
+    @Test
+    void refusesAMissingAdapterPath() {
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
+                () -> PackageMetadata.discover(List.of(Path.of("missing-adapter.jar"))));
+
+        assertTrue(exception.getMessage().contains("missing-adapter.jar"));
     }
 
     @Test

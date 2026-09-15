@@ -2,6 +2,10 @@ package org.phylospec.ui.spec;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.net.URL;
+import java.net.URLClassLoader;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -35,6 +39,32 @@ public final class PackageMetadata {
         ServiceLoader.load(TileLibrary.class, Objects.requireNonNull(classLoader))
                 .forEach(libraries::add);
         return fromLibraries(libraries);
+    }
+
+    /** Discovers adapters from additional JAR files or compiled-classes directories. */
+    public static PackageMetadata discover(List<Path> adapterPaths) {
+        List<Path> paths = List.copyOf(adapterPaths);
+        paths.forEach(path -> {
+            if (!Files.exists(path)) {
+                throw new IllegalArgumentException("Adapter path does not exist: " + path);
+            }
+        });
+
+        URL[] urls = paths.stream().map(PackageMetadata::url).toArray(URL[]::new);
+        ClassLoader parent = Thread.currentThread().getContextClassLoader();
+        try (URLClassLoader adapters = new URLClassLoader(urls, parent)) {
+            return discover(adapters);
+        } catch (IOException exception) {
+            throw new UncheckedIOException("Could not close the package adapter loader", exception);
+        }
+    }
+
+    private static URL url(Path path) {
+        try {
+            return path.toAbsolutePath().normalize().toUri().toURL();
+        } catch (IOException exception) {
+            throw new UncheckedIOException("Could not load package adapter path: " + path, exception);
+        }
     }
 
     /** Loads metadata from an already selected set of adapters. */
