@@ -42,6 +42,25 @@ class PackageMetadataTest {
     }
 
     @Test
+    void explainsWhenAnAdapterRuntimeDependencyIsMissing() {
+        ClassLoader missingDependency = new ClassLoader(getClass().getClassLoader()) {
+            @Override
+            protected Class<?> loadClass(String name, boolean resolve) throws ClassNotFoundException {
+                if (name.equals("org.phylospec.ui.spec.TestTileLibrary")) {
+                    throw new NoClassDefFoundError("example/missing/Dependency");
+                }
+                return super.loadClass(name, resolve);
+            }
+        };
+
+        PackageMetadata.LoadFailure failure = assertThrows(PackageMetadata.LoadFailure.class,
+                () -> PackageMetadata.discover(missingDependency));
+
+        assertTrue(failure.getMessage().contains("example.missing.Dependency"));
+        assertTrue(failure.getMessage().contains("--adapter-path"));
+    }
+
+    @Test
     void discoversComponentAndEngineMetadataFromTheSameAdapter() {
         PackageMetadata metadata = PackageMetadata.discover();
 

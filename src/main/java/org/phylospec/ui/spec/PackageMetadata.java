@@ -9,6 +9,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.ServiceConfigurationError;
 import java.util.ServiceLoader;
 
 import org.phylospec.components.ComponentLibrary;
@@ -36,9 +37,38 @@ public final class PackageMetadata {
     /** Discovers adapters visible to a caller-supplied runtime class loader. */
     public static PackageMetadata discover(ClassLoader classLoader) {
         List<TileLibrary<?>> libraries = new ArrayList<>();
-        ServiceLoader.load(TileLibrary.class, Objects.requireNonNull(classLoader))
-                .forEach(libraries::add);
+        try {
+            ServiceLoader.load(TileLibrary.class, Objects.requireNonNull(classLoader))
+                    .forEach(libraries::add);
+        } catch (ServiceConfigurationError | LinkageError failure) {
+            throw new LoadFailure(message(failure), failure);
+        }
         return fromLibraries(libraries);
+    }
+
+    private static String message(Throwable failure) {
+        String missing = missingClass(failure);
+        String detail = missing == null ? "" : ": missing runtime class " + missing;
+        return "Could not load a package adapter" + detail
+                + ". Include the adapter and all of its runtime dependencies in --adapter-path.";
+    }
+
+    private static String missingClass(Throwable failure) {
+        for (Throwable current = failure; current != null; current = current.getCause()) {
+            if ((current instanceof NoClassDefFoundError
+                    || current instanceof ClassNotFoundException)
+                    && current.getMessage() != null) {
+                return current.getMessage().replace('/', '.');
+            }
+        }
+        return null;
+    }
+
+    /** A discovered adapter could not be linked or instantiated. */
+    public static final class LoadFailure extends RuntimeException {
+        private LoadFailure(String message, Throwable cause) {
+            super(message, cause);
+        }
     }
 
     /** Discovers adapters from additional JAR files or compiled-classes directories. */
