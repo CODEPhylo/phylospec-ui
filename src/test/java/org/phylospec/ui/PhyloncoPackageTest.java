@@ -5,7 +5,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
@@ -23,7 +25,7 @@ import org.phylospec.ui.spec.Validator;
 class PhyloncoPackageTest {
 
     @Test
-    void discoversConfiguresAndWritesSiFit3(@TempDir Path directory) throws Exception {
+    void runsGuiGeneratedSiFit3ThroughThePackagedAdapter(@TempDir Path directory) throws Exception {
         Path adapter = Path.of(System.getProperty("phylospec.phyloncoAdapter"));
         PackageMetadata metadata = PackageMetadata.discover(List.of(adapter));
         Library library = metadata.library();
@@ -58,7 +60,8 @@ class PhyloncoPackageTest {
         analysis.substitutionModel().param("mutationPath").valueProperty().set("true");
         analysis.chainLengthProperty().set("50");
         analysis.logEveryProperty().set("1");
-        analysis.logFileProperty().set("phylonco-sifit3.log");
+        String outputPrefix = directory.resolve("phylonco-sifit3").toString();
+        analysis.logFileProperty().set(outputPrefix + ".log");
         analysis.seedProperty().set("24680");
 
         String script = ScriptWriter.write(analysis);
@@ -75,5 +78,60 @@ class PhyloncoPackageTest {
         Analysis reloaded = ScriptReader.read(library, script);
         assertEquals("siFit3", reloaded.substitutionModel().name());
         assertEquals("true", reloaded.substitutionModel().param("mutationPath").valueProperty().get());
+
+        Path source = directory.resolve("analysis.phylospec");
+        Files.writeString(source, script);
+        Path launcher = directory.resolve("RunPackagedPhyloSpec.java");
+        Files.writeString(launcher, launcherSource());
+        Path processOutput = directory.resolve("runner-output.txt");
+
+        Process process = new ProcessBuilder(
+                        javaExecutable().toString(),
+                        "-cp",
+                        adapter.resolve("*").toString(),
+                        launcher.toString(),
+                        source.toString(),
+                        outputPrefix)
+                .directory(directory.toFile())
+                .redirectErrorStream(true)
+                .redirectOutput(processOutput.toFile())
+                .start();
+
+        boolean finished = process.waitFor(Duration.ofSeconds(30).toMillis(), TimeUnit.MILLISECONDS);
+        if (!finished) process.destroyForcibly();
+        assertTrue(finished, "Packaged runner did not finish within 30 seconds");
+
+        String output = Files.readString(processOutput);
+        assertEquals(0, process.exitValue(), output);
+        assertTrue(output.contains("Alignment(ternary)"), output);
+        assertTrue(output.contains("End likelihood:"), output);
+
+        Path trace = Path.of(outputPrefix + ".log");
+        assertTrue(Files.isRegularFile(trace));
+        assertTrue(Files.isRegularFile(Path.of(outputPrefix + ".trees")));
+        assertTrue(Files.isRegularFile(Path.of(outputPrefix + ".state.xml")));
+        try (var lines = Files.lines(trace)) {
+            assertEquals(52, lines.filter(line -> !line.isBlank() && !line.startsWith("#")).count());
+        }
+    }
+
+    private static Path javaExecutable() {
+        return Path.of(System.getProperty("java.home"), "bin", "java");
+    }
+
+    private static String launcherSource() {
+        return """
+                import java.nio.file.Path;
+                import java.util.List;
+                import runner.PhyloSpecRunner;
+
+                class RunPackagedPhyloSpec {
+                    public static void main(String[] args) throws Exception {
+                        PhyloSpecRunner runner = new PhyloSpecRunner(
+                                Path.of(args[0]), List.of("phylonco", "beast2"));
+                        runner.runPhyloSpec(args[1]);
+                    }
+                }
+                """;
     }
 }
