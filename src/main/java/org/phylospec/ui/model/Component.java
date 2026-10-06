@@ -97,7 +97,13 @@ public final class Component {
 
     /** The same, for a prior over {@code support}, which decides any type variables it has. */
     public static Component prior(Generator generator, Integer dimension, Library library, String support) {
-        Component component = new Component(false, library, EngineSupport.unclaimed(), false);
+        return prior(generator, dimension, library, support, false);
+    }
+
+    /** A tree-bound rate prior can estimate its own inputs and use the enclosing clock's tree. */
+    public static Component prior(Generator generator, Integer dimension, Library library,
+            String support, boolean clockRates) {
+        Component component = new Component(clockRates, library, EngineSupport.unclaimed(), clockRates);
         if (library != null && support != null) {
             component.boundTo(library.bindingsForPrior(generator, support));
         }
@@ -157,7 +163,8 @@ public final class Component {
             Component targetInner = target.priorProperty().get();
             if (targetInner == null) {
                 targetInner = source.isEstimated()
-                        ? prior(sourceInner.generator(), target.dimension(), to.library)
+                        ? prior(sourceInner.generator(), target.dimension(), to.library,
+                                target.priorSupport(), target.isClockRates())
                         : nested(sourceInner.generator(), to.library, to.argsEstimable, to.support);
                 target.priorProperty().set(targetInner);
             }
@@ -176,6 +183,13 @@ public final class Component {
             if (structural && WIRED.contains(argument.getName())) continue;
             Param param = new Param(argument, argsEstimable && canBeStochastic(chosen, argument),
                     library, Library.declaredLength(chosen, argument.getName()));
+            param.applyIndicatorBounds(chosen.getConstraints());
+            if (structural && Library.CLOCK_MODEL.equals(library.roleOf(chosen))
+                    && "Vector".equals(Library.head(argument.getType()))
+                    && library.isSubtype(Library.element(argument.getType()), "Rate")
+                    && chosen.getArguments().stream().anyMatch(a -> "tree".equals(a.getName()))) {
+                param.markClockRates();
+            }
             if (needsNesting(param)) param.markNested(argsEstimable);
             attachPriors(param);
             params.add(param);
@@ -218,12 +232,20 @@ public final class Component {
      */
     public static Component sized(Component prior, Param drawn) {
         Param count = prior.param("num");
-        if (count == null) return prior;
-
-        if (drawn.dimensionExpression() != null) {
-            count.valueProperty().set(drawn.dimensionExpression());
-        } else if (drawn.dimension() != null) {
-            count.valueProperty().set(String.valueOf(drawn.dimension()));
+        if (count != null) {
+            if (drawn.dimensionExpression() != null) {
+                count.valueProperty().set(drawn.dimensionExpression());
+            } else if (drawn.dimension() != null) {
+                count.valueProperty().set(String.valueOf(drawn.dimension()));
+            }
+        }
+        if (drawn.isIndicator()) {
+            if (drawn.lowerBound() != null && prior.param("lower") != null) {
+                prior.param("lower").valueProperty().set(drawn.lowerBound().toString());
+            }
+            if (drawn.upperBound() != null && prior.param("upper") != null) {
+                prior.param("upper").valueProperty().set(drawn.upperBound().toString());
+            }
         }
         return prior;
     }
@@ -254,10 +276,11 @@ public final class Component {
     private void ensurePrior(Param param) {
         if (param.priorProperty().get() != null) return;
         if (param.isDistributionValued() || param.isEstimated()) {
-            Generator choice = library.defaultPriorFor(param.priorSupport());
+            Generator choice = library.defaultPriorFor(param.priorSupport(), param.isClockRates());
             if (choice != null) {
                 param.priorProperty().set(
-                        sized(prior(choice, param.dimension(), library, param.priorSupport()), param));
+                        sized(prior(choice, param.dimension(), library,
+                                param.priorSupport(), param.isClockRates()), param));
             }
         } else if (param.isComponentValued()) {
             List<Generator> choices = library.producing(param.type());

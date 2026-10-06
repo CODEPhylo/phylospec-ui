@@ -402,9 +402,10 @@ public final class ScriptWriter {
             }
             // What the prior is built from is declared before the draw that uses it: a species
             // tree's Yule takes a taxon set that is itself a call, and that call needs a name.
-            declarations(nested, slot.forPrior(), statements);
+            Slot priorSlot = param.isClockRates() ? slot : slot.forPrior();
+            declarations(nested, priorSlot, statements);
             statements.add(call(declared(param.type()) + " " + variable + " ~ ",
-                    nested.name(), argsOf(nested, slot.forPrior())));
+                    nested.name(), argsOf(nested, priorSlot)));
         }
     }
 
@@ -413,8 +414,11 @@ public final class ScriptWriter {
     }
 
     private String draw(String variable, Component component, Slot slot) {
-        String type = declared(Library.inner(component.generator().getGeneratedType()));
-        return call(type + " " + variable + " ~ ", component.name(), argsOf(component, slot));
+        String generated = component.generator().getGeneratedType();
+        boolean stochastic = "Distribution".equals(Library.head(generated));
+        String type = declared(stochastic ? Library.inner(generated) : generated);
+        return call(type + " " + variable + (stochastic ? " ~ " : " = "),
+                component.name(), argsOf(component, slot));
     }
 
     /**

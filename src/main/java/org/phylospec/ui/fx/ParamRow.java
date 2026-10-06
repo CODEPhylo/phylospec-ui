@@ -184,9 +184,11 @@ public final class ParamRow {
      */
     public static Node distributionEditor(Analysis analysis, Param param) {
         Library library = analysis.library();
-        return componentEditor(analysis, library.priorsFor(param.priorSupport()), param.priorProperty(),
+        return componentEditor(analysis,
+                library.priorsFor(param.priorSupport(), param.isClockRates()), param.priorProperty(),
                 chosen -> Component.sized(
-                        Component.prior(chosen, param.dimension(), library, param.priorSupport()), param));
+                        Component.prior(chosen, param.dimension(), library,
+                                param.priorSupport(), param.isClockRates()), param));
     }
 
     /**

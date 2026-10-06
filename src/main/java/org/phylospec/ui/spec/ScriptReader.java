@@ -367,7 +367,7 @@ public final class ScriptReader {
                         : (shared != null ? shared : Component.estimable(library, analysis.support()));
                 if (!clocks.isEmpty() && shared == null) analysis.clockModels().add(clock);
                 if (shared == null && used.branchRates() != null) {
-                    bind(clock, drawnCall(used.branchRates()), true);
+                    bind(clock, clockCall(used.branchRates()), true);
                 }
                 clocks.put(clockKey, clock);
             }
@@ -387,9 +387,11 @@ public final class ScriptReader {
      */
     private Component sharedComponent(String variable, Set<String> built, String structural,
             java.util.function.Function<String, Component> lookup) {
-        Expr.Call call = drawnCall(variable);
+        boolean clock = "tree".equals(structural);
+        Expr.Call call = clock ? clockCall(variable) : drawnCall(variable);
         for (String other : built) {
-            if (alikeApartFrom(call, drawnCall(other), structural)) return lookup.apply(other);
+            Expr.Call otherCall = clock ? clockCall(other) : drawnCall(other);
+            if (alikeApartFrom(call, otherCall, structural)) return lookup.apply(other);
         }
         return null;
     }
@@ -415,6 +417,15 @@ public final class ScriptReader {
         Stmt.Draw draw = draws.get(variable);
         if (draw == null) throw new Unsupported(variable + " is used but never drawn.");
         return callOf(draw.expression, variable);
+    }
+
+    /** A clock may be drawn from a distribution or assigned by a deterministic function. */
+    private Expr.Call clockCall(String variable) {
+        if (draws.containsKey(variable)) return drawnCall(variable);
+        Expr.Call call = intermediates.get(variable);
+        if (call == null) throw new Unsupported(variable + " is used but never defined.");
+        claimed.add(variable);
+        return call;
     }
 
     /**
@@ -473,8 +484,8 @@ public final class ScriptReader {
      */
     private Component priorFrom(Expr.Call call, Param param) {
         Component component = Component.prior(overloadFor(call), param.dimension(), library,
-                param.priorSupport());
-        bind(component, call, false);
+                param.priorSupport(), param.isClockRates());
+        bind(component, call, param.isClockRates());
         return component;
     }
 

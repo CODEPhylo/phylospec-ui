@@ -20,6 +20,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.phylospec.components.Argument;
 import org.phylospec.components.ComponentLibrary;
 import org.phylospec.components.ComponentResolver;
+import org.phylospec.components.Constraint;
 import org.phylospec.components.Generator;
 import org.phylospec.components.Type;
 import org.phylospec.typeresolver.TypeResolver;
@@ -258,7 +259,17 @@ public final class Library {
 
     /** The distribution BEAUti would reach for, given the type of the thing being estimated. */
     public Generator defaultPriorFor(String support) {
-        List<Generator> candidates = priorsFor(support);
+        return defaultPriorFor(support, false);
+    }
+
+    /** Allows a clock's branch-rate vector to use a prior bound to that clock's tree. */
+    public Generator defaultPriorFor(String support, boolean clockRates) {
+        List<Generator> candidates = priorsFor(support, clockRates);
+        if (clockRates) {
+            for (Generator candidate : candidates) {
+                if ("clockRatePrior".equals(roleOf(candidate))) return candidate;
+            }
+        }
         String preferred = switch (head(support)) {
             case "PositiveReal", "Rate" -> "LogNormal";
             case "Probability" -> "Beta";
@@ -298,11 +309,17 @@ public final class Library {
      * are left out — they would need a nested editor, and BEAUti has no equivalent.
      */
     public List<Generator> priorsFor(String type) {
+        return priorsFor(type, false);
+    }
+
+    /** Tree-dependent clock-rate priors are only offered for branch rates on the active tree. */
+    public List<Generator> priorsFor(String type, boolean clockRates) {
         List<Generator> found = new ArrayList<>();
         for (List<Generator> overloads : generators.values()) {
             for (Generator generator : overloads) {
                 if (!"Distribution".equals(head(generator.getGeneratedType()))) continue;
-                if (needsTheTree(generator)) continue;
+                if (needsTheTree(generator)
+                        && !(clockRates && "clockRatePrior".equals(roleOf(generator)))) continue;
                 String support = inner(generator.getGeneratedType());
                 if (support == null) continue;
                 if (!isSubtype(substitute(support, unify(support, type)), type)) continue;
@@ -511,14 +528,20 @@ public final class Library {
      * writes twenty frequencies as four and is told so, having had the answer all along.
      */
     public static Integer declaredLength(Generator generator, String argument) {
-        List<String> constraints = generator.getConstraints();
+        List<Constraint> constraints = generator.getConstraints();
         if (constraints == null) return null;
 
-        Pattern fixes = Pattern.compile("^\\s*" + Pattern.quote(argument)
-                + "\\s*\\.\\s*num\\s*==\\s*(\\d+)\\s*$");
-        for (String constraint : constraints) {
-            Matcher matcher = fixes.matcher(constraint);
-            if (matcher.matches()) return Integer.valueOf(matcher.group(1));
+        for (Constraint constraint : constraints) {
+            if (!argument.equals(constraint.getArgument())) continue;
+            if (!"num".equals(constraint.getProperty())) continue;
+            if (constraint.getOperator() != Constraint.Operator.EQUALS) continue;
+
+            Double constant = constraint.getConstant();
+            if (constant == null || !Double.isFinite(constant)) continue;
+            if (constant != Math.rint(constant)) continue;
+            if (constant < 0 || constant > Integer.MAX_VALUE) continue;
+
+            return constant.intValue();
         }
         return null;
     }

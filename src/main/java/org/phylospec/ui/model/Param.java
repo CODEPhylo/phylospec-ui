@@ -15,6 +15,7 @@ import javafx.beans.property.SimpleStringProperty;
 import javafx.beans.property.StringProperty;
 
 import org.phylospec.components.Argument;
+import org.phylospec.components.Constraint;
 import org.phylospec.components.Generator;
 import org.phylospec.ui.spec.EngineSupport;
 import org.phylospec.ui.spec.Library;
@@ -52,6 +53,11 @@ public final class Param {
 
     /** Set when this argument has to be built by calling something rather than typed in. */
     private boolean nested;
+
+    /** This branch-rate vector can use a distribution conditioned on the active tree. */
+    private boolean clockRates;
+    private Integer lowerBound;
+    private Integer upperBound;
 
     /** Whether arguments of the selected nested component may themselves be estimated. */
     private boolean nestedArgsEstimable;
@@ -274,6 +280,40 @@ public final class Param {
      */
     public boolean isComponentValued() {
         return isDistributionValued() || nested;
+    }
+
+    void markClockRates() {
+        this.clockRates = true;
+    }
+
+    public boolean isClockRates() {
+        return clockRates;
+    }
+
+    void applyIndicatorBounds(List<Constraint> constraints) {
+        if (!indicator || constraints == null) return;
+        for (Constraint constraint : constraints) {
+            if (!name.equals(constraint.getArgument())
+                    || !"value".equals(constraint.getProperty())) continue;
+            Double constant = constraint.getConstant();
+            if (constant == null || !Double.isFinite(constant)
+                    || constant != Math.rint(constant)
+                    || constant < Integer.MIN_VALUE || constant > Integer.MAX_VALUE) continue;
+            int bound = constant.intValue();
+            if (constraint.getOperator() == Constraint.Operator.GREATER_THAN_OR_EQUAL) {
+                lowerBound = bound;
+            } else if (constraint.getOperator() == Constraint.Operator.LESS_THAN_OR_EQUAL) {
+                upperBound = bound;
+            }
+        }
+    }
+
+    public Integer lowerBound() {
+        return lowerBound;
+    }
+
+    public Integer upperBound() {
+        return upperBound;
     }
 
     void markNested(boolean argsEstimable) {

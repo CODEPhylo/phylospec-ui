@@ -71,7 +71,15 @@ public class ValidatorTest {
                       { "name": "a", "type": "Simplex", "required": true, "description": "First." },
                       { "name": "b", "type": "Simplex", "required": true, "description": "Second." }
                     ],
-                    "constraints": ["a.num == b.num"]
+                    "constraints": [
+                      {
+                        "argument": "a",
+                        "property": "num",
+                        "operator": "equals",
+                        "otherArgument": "b",
+                        "otherProperty": "num"
+                      }
+                    ]
                   }
                 ]
               }

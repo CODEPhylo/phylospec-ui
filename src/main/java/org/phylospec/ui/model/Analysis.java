@@ -188,7 +188,9 @@ public final class Analysis {
             if (!param.includeProperty().get()) continue;
             Component nested = param.priorProperty().get();
             // A nested function's own arguments may be estimated; a prior's hyperparameters cannot.
-            if (nested != null && !param.isEstimated()) collectEstimated(nested, into);
+            if (nested != null && (!param.isEstimated() || param.isClockRates())) {
+                collectEstimated(nested, into);
+            }
             if (param.isEstimated()) into.add(param);
         }
     }
