@@ -73,6 +73,13 @@ public final class Analysis {
         this.trees.add(new TreeModel(Component.estimable(library, support)));
         this.treePriors.add(this.trees.get(0).prior());
         this.likelihood = Component.estimable(library, support);
+        likelihood.generatorProperty().addListener((observable, was, now) -> {
+            if (isClockMixture()) {
+                for (Component clock : clockModels) {
+                    if (!isSharedRatesClock(clock.generator())) select(clock, "sharedRatesClock");
+                }
+            }
+        });
 
         // A partition can arrive through addPartition, through a drop on the Partitions tab, or
         // straight onto the list. Attaching the models here covers all three, so no caller has to
@@ -143,6 +150,9 @@ public final class Analysis {
     /** Everything the library offers for a tab, the familiar ones first. */
     public List<Generator> choicesFor(String role) {
         List<Generator> found = library.withRole(role, PREFERRED.getOrDefault(role, List.of()));
+        if (Library.CLOCK_MODEL.equals(role) && isClockMixture()) {
+            return found.stream().filter(Analysis::isSharedRatesClock).toList();
+        }
         return Library.TREE_LIKELIHOOD.equals(role) ? observableAsTheData(found) : found;
     }
 
@@ -428,6 +438,7 @@ public final class Analysis {
 
     /** True if it not only takes that argument but requires it, so the chooser offers no "None". */
     public boolean likelihoodNeeds(String argument) {
+        if (isClockMixture() && "branchRates".equals(argument)) return true;
         Argument declared = argumentOfLikelihood(argument);
         return declared != null && Boolean.TRUE.equals(declared.getRequired());
     }
@@ -435,10 +446,29 @@ public final class Analysis {
     private Argument argumentOfLikelihood(String argument) {
         Generator chosen = likelihood.generator();
         if (chosen == null) return null;
+        // The clock-mixture preset's children, not its parent, consume these model slots.
+        if (isClockMixture() && List.of("tree", "qMatrix", "siteRates", "branchRates").contains(argument)) {
+            chosen = library.overloads("PhyloCTMC").getFirst();
+        }
         return chosen.getArguments().stream()
                 .filter(a -> argument.equals(a.getName()))
                 .findFirst()
                 .orElse(null);
+    }
+
+    /** An explicit two-child preset, not an inference of arbitrary mixture structure. */
+    public boolean isClockMixture() {
+        return isClockMixture(likelihood.generator());
+    }
+
+    public static boolean isClockMixture(Generator generator) {
+        return generator != null && "alignmentMixture".equals(generator.getName())
+                && "clockmodelaveraging.distributions.sequence".equals(generator.getNamespace());
+    }
+
+    public static boolean isSharedRatesClock(Generator generator) {
+        return generator != null && "sharedRatesClock".equals(generator.getName())
+                && "clockmodelaveraging.functions.clock".equals(generator.getNamespace());
     }
 
     /** The name of the first tree, which is the only one unless trees have been unlinked. */

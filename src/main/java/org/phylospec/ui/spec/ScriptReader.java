@@ -74,6 +74,7 @@ public final class ScriptReader {
 
     /** Whether a likelihood has been read, so that a second one can be compared against it. */
     private boolean sawLikelihood;
+    private Expr.Call clockMixture;
 
     private ScriptReader(Library library) {
         this.library = library;
@@ -266,7 +267,7 @@ public final class ScriptReader {
             if (!(observed.observedAs instanceof Expr.Variable data)) {
                 throw new Unsupported("An observation must name the alignment it is observed as.");
             }
-            wiring.put(data.variableName, new Wiring(
+            wiring.put(data.variableName, analysis.isClockMixture() ? clockMixtureWiring(call) : new Wiring(
                     variableArgument(call, "tree"),
                     variableArgument(call, "qMatrix"),
                     variableArgument(call, "siteRates"),
@@ -280,6 +281,73 @@ public final class ScriptReader {
 
         throw new Unsupported("Unsupported statement in the model block: "
                 + statement.getClass().getSimpleName() + ".");
+    }
+
+    /** Recognises only the composition the clock-averaging preset can preserve on re-export. */
+    private Wiring clockMixtureWiring(Expr.Call mixture) {
+        if (java.util.Arrays.stream(mixture.arguments).anyMatch(a -> a instanceof Expr.DrawnArgument)) {
+            throw new Unsupported("Declare sampled mixture parameters as named variables before using the preset.");
+        }
+        if (clockMixture != null && !alikeApartFrom(clockMixture, mixture, "components")) {
+            throw new Unsupported("The partitions must share the same mixture weights and ambiguity setting.");
+        }
+        clockMixture = mixture;
+        Expr components = argument(mixture, "components");
+        if (!(components instanceof Expr.Array array) || array.elements.size() != 2) {
+            throw new Unsupported("The clock-averaging preset requires exactly two inline PhyloCTMC components.");
+        }
+        Expr.Call strict = callOf(array.elements.get(0), "Strict component");
+        Expr.Call relaxed = callOf(array.elements.get(1), "Relaxed component");
+        for (Expr.Call child : List.of(strict, relaxed)) {
+            if (!"PhyloCTMC".equals(child.functionName)
+                    || java.util.Arrays.stream(child.arguments).anyMatch(a -> !Set.of(
+                            "tree", "qMatrix", "siteRates", "branchRates").contains(a.name)
+                            || (a instanceof Expr.DrawnArgument && !"branchRates".equals(a.name)))) {
+                throw new Unsupported("This preset supports PhyloCTMC children with shared tree and site-model parameters only.");
+            }
+        }
+        String tree = variableArgument(relaxed, "tree");
+        String matrix = variableArgument(relaxed, "qMatrix");
+        if (tree == null || matrix == null
+                || !tree.equals(variableArgument(strict, "tree"))
+                || !matrix.equals(variableArgument(strict, "qMatrix"))) {
+            throw new Unsupported("The clock-averaging components must share tree and qMatrix variables.");
+        }
+        Expr.Call strictClock = argument(strict, "branchRates") instanceof Expr.Call inline
+                ? inline : clockCall(requiredVariable(strict, "branchRates"));
+        Expr.Call sharedClock = clockCall(requiredVariable(relaxed, "branchRates"));
+        if (!"StrictClock".equals(strictClock.functionName)
+                || !Analysis.isSharedRatesClock(overloadFor(sharedClock))
+                || java.util.Arrays.stream(strictClock.arguments).anyMatch(a -> !Set.of("tree", "clockRate").contains(a.name))
+                || java.util.Arrays.stream(strictClock.arguments).anyMatch(a -> a instanceof Expr.DrawnArgument)
+                || java.util.Arrays.stream(sharedClock.arguments).anyMatch(a -> a instanceof Expr.DrawnArgument)
+                || !tree.equals(variableArgument(strictClock, "tree"))
+                || !tree.equals(variableArgument(sharedClock, "tree"))) {
+            throw new Unsupported("The clock-averaging components must be ordered [StrictClock, sharedRatesClock] on the same tree.");
+        }
+        Expr strictRate = argument(strictClock, "clockRate");
+        Expr meanRate = argument(sharedClock, "meanRate");
+        if (meanRate == null) meanRate = new Expr.Literal(1.0);
+        if (!java.util.Objects.equals(strictRate, meanRate)) {
+            throw new Unsupported("The strict clock rate must be the same expression as the shared clock meanRate.");
+        }
+        String strictSite = variableArgument(strict, "siteRates");
+        String relaxedSite = variableArgument(relaxed, "siteRates");
+        if ((argument(strict, "siteRates") != null && strictSite == null)
+                || (argument(relaxed, "siteRates") != null && relaxedSite == null)
+                || ((strictSite == null) != (relaxedSite == null))
+                || (strictSite != null && strictSite.equals(relaxedSite))
+                || (strictSite != null && !alikeApartFrom(
+                        drawnCall(strictSite), drawnCall(relaxedSite), ""))) {
+            throw new Unsupported("Both components must use identical site-rate calls and shared parameter expressions.");
+        }
+        return new Wiring(tree, matrix, relaxedSite, variableArgument(relaxed, "branchRates"));
+    }
+
+    private static String requiredVariable(Expr.Call call, String name) {
+        String variable = variableArgument(call, name);
+        if (variable == null) throw new Unsupported(name + " must name a model variable in the clock-averaging preset.");
+        return variable;
     }
 
     /** The variable an argument names, or null if it is absent or is not a plain variable. */

@@ -181,8 +181,12 @@ public final class Component {
             // is not one of those: a Yule over an estimated species tree has to be told which taxa
             // it spans, because no partition is drawn on it.
             if (structural && WIRED.contains(argument.getName())) continue;
+            boolean clockMixture = structural && Analysis.isClockMixture(chosen);
+            if (clockMixture && "components".equals(argument.getName())) continue;
+            Integer length = Library.declaredLength(chosen, argument.getName());
+            if (clockMixture && "weights".equals(argument.getName())) length = 2;
             Param param = new Param(argument, argsEstimable && canBeStochastic(chosen, argument),
-                    library, Library.declaredLength(chosen, argument.getName()));
+                    library, length);
             param.applyIndicatorBounds(chosen.getConstraints());
             if (structural && Library.CLOCK_MODEL.equals(library.roleOf(chosen))
                     && "Vector".equals(Library.head(argument.getType()))

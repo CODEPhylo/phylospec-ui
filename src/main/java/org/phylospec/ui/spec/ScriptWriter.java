@@ -28,6 +28,7 @@ public final class ScriptWriter {
     /** The script variable each group's product is written as, fixed before anything is emitted. */
     private final Map<SiteModel, String> qMatrixNames = new IdentityHashMap<>();
     private final Map<SiteModel, String> siteRatesNames = new IdentityHashMap<>();
+    private final Map<SiteModel, String> mixtureSiteRatesNames = new IdentityHashMap<>();
     private final Map<Partition, String> branchRatesNames = new IdentityHashMap<>();
 
     /** Components already written out, since a shared one must not declare its params twice. */
@@ -105,6 +106,7 @@ public final class ScriptWriter {
     private void nameGroups() {
         qMatrixNames.clear();
         siteRatesNames.clear();
+        mixtureSiteRatesNames.clear();
         branchRatesNames.clear();
 
         boolean oneSiteModel = analysis.siteModels().size() == 1;
@@ -112,6 +114,10 @@ public final class ScriptWriter {
             String qualifier = oneSiteModel ? "" : firstPartitionUsing(model);
             qMatrixNames.put(model, reserve(oneSiteModel ? "qMatrix" : qualifier + "QMatrix"));
             siteRatesNames.put(model, reserve(oneSiteModel ? "siteRates" : qualifier + "SiteRates"));
+            if (analysis.isClockMixture()) {
+                mixtureSiteRatesNames.put(model,
+                        reserve(oneSiteModel ? "relaxedSiteRates" : qualifier + "RelaxedSiteRates"));
+            }
         }
 
         // Branch rates belong to a clock model and a tree together: one clock shared by partitions
@@ -262,6 +268,10 @@ public final class ScriptWriter {
                 statements.add("");
                 declarations(model.siteRates(), slot, statements);
                 statements.add(draw(siteRatesNames.get(model), model.siteRates(), slot));
+                if (analysis.isClockMixture()) {
+                    // Separate site-model objects, but the same declared parameters and priors.
+                    statements.add(draw(mixtureSiteRatesNames.get(model), model.siteRates(), slot));
+                }
             }
         }
 
@@ -432,8 +442,26 @@ public final class ScriptWriter {
         }
         String variable = unique(partition.name() + "Alignment");
         String type = declared(Library.inner(likelihood.generator().getGeneratedType()));
-        return call(type + " " + variable + " ~ ", likelihood.name(), argsOf(likelihood, slotFor(partition)))
+        Slot slot = slotFor(partition);
+        List<String> args = argsOf(likelihood, slot);
+        if (analysis.isClockMixture()) args.add(0, "components=" + clockMixture(partition, slot));
+        return call(type + " " + variable + " ~ ", likelihood.name(), args)
                 + " observed as " + partition.name();
+    }
+
+    private String clockMixture(Partition partition, Slot slot) {
+        if (!Analysis.isSharedRatesClock(slot.clock().generator())) {
+            throw new IllegalStateException("The clock-averaging preset requires sharedRatesClock.");
+        }
+        Param meanRate = slot.clock().param("meanRate");
+        String rate = meanRate.includeProperty().get() ? valueOf(meanRate, slot) : "1.0";
+        String strictClock = "StrictClock(tree=" + slot.tree().name() + ", clockRate=" + rate + ")";
+        String common = "tree=" + slot.tree().name() + ", qMatrix=" + slot.qMatrix();
+        String strictSite = slot.siteRates() == null ? "" : ", siteRates=" + slot.siteRates();
+        String relaxedSite = slot.siteRates() == null ? ""
+                : ", siteRates=" + mixtureSiteRatesNames.get(partition.siteModel());
+        return "[PhyloCTMC(" + common + strictSite + ", branchRates~" + strictClock + "), "
+                + "PhyloCTMC(" + common + relaxedSite + ", branchRates=" + slot.branchRates() + ")]";
     }
 
     // ---------------------------------------------------------------- mcmc

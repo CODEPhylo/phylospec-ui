@@ -125,6 +125,13 @@ public final class ComponentPanel {
     private static void rebuild(Analysis analysis, GridPane grid, Component component) {
         grid.getChildren().clear();
         grid.getRowConstraints().clear();
+        if (component == analysis.likelihood() && analysis.isClockMixture()) {
+            Label composition = Form.caption("Clock averaging preset: [StrictClock, sharedRatesClock]. "
+                    + "Both likelihoods share the tree, substitution model, mean rate and site-rate parameters. "
+                    + "Configure the relaxed branch in Clock Model. Weights are ordered [strict, relaxed]; "
+                    + "[1/3, 2/3] with a uniform SVS indicator gives equal prior weight to strict, UC and AC.");
+            grid.add(composition, 0, 0, 3, 1);
+        }
         for (Param param : component.params()) {
             ParamRow.add(grid, analysis, param);
         }
@@ -156,7 +163,9 @@ public final class ComponentPanel {
                     return;
                 }
 
-                String described = Component.describe(item, among);
+                String described = Analysis.isClockMixture(item)
+                        ? "alignmentMixture (StrictClock + sharedRatesClock)"
+                        : Component.describe(item, among);
                 EngineSupport.Verdict verdict = support.verdictFor(item);
                 if (verdict.supported()) {
                     setText(described);
