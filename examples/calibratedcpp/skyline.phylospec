@@ -1,0 +1,43 @@
+use calibratedcpp.distributions.tree
+use calibratedcpp.types
+use calibratedcpp.functions
+use calibratedcpp.distributions
+
+data {
+    Alignment fourtaxa = fromNexus(file="four-taxa.nex")
+}
+
+model {
+    QMatrix qMatrix = jc69()
+    SkylineParameter birthRate = skylineParameter(values=[1.2])
+    Real values1 ~ Normal(mean=-0.3, sd=0.4)
+    Real values2 ~ Normal(mean=-0.3, sd=0.4)
+    Vector<NonNegativeReal> changeTimes ~ OrderedUniform(count=1, upper=1.0)
+    SkylineParameter diversificationRate = skylineParameter(
+        values=[values1, values2],
+        changeTimes=changeTimes,
+        timesAreRelative=true
+    )
+    CalibrationForest calibrations = calibrationForest(
+        newick="((A,B)AB[&lower=1.0,upper=2.0],C,D)ABCD[&lower=2.5,upper=4.0];"
+    )
+    Tree tree ~ CalibratedBirthDeathSkyline(
+        birthRate=birthRate,
+        diversificationRate=diversificationRate,
+        rho=1.0,
+        calibrations=calibrations,
+        conditionOnCalibrations=true,
+        taxa=taxa(fourtaxa)
+    )
+    Vector<Rate> branchRates ~ StrictClock(clockRate=0.1, tree=tree)
+    Alignment<Character> fourtaxaAlignment ~ PhyloCTMC(
+        tree=tree, qMatrix=qMatrix, branchRates=branchRates
+    ) observed as fourtaxa
+}
+
+mcmc {
+    Integer chainLength = 200
+    Integer defaultLogEvery = 10
+    String outputPrefix = "analysis"
+    Integer randomSeed = 12345
+}

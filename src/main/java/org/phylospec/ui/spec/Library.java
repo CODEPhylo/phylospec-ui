@@ -413,6 +413,8 @@ public final class Library {
     private boolean buildable(Generator generator) {
         for (Argument argument : generator.getArguments()) {
             if (!Boolean.TRUE.equals(argument.getRequired())) continue;
+            // There is no matrix editor/default; offering such a prior emits an empty argument.
+            if (Set.of("Matrix", "SquareMatrix", "StochasticMatrix").contains(head(argument.getType()))) return false;
             String inner = inner(argument.getType());
             if ("Vector".equals(head(argument.getType())) && inner != null
                     && !hasLiteralSyntax(inner.split(";", 2)[0].trim())) {
@@ -577,12 +579,17 @@ public final class Library {
     /** True if a value of type {@code sub} is always a legal value of type {@code sup}. */
     public boolean isSubtype(String sub, String sup) {
         String target = canonical(head(sup));
-        String current = canonical(head(sub));
+        String current = sub;
         for (int hop = 0; hop < MAX_TYPE_HOPS && current != null; hop++) {
-            if (current.equals(target)) return true;
-            Type type = types.get(current);
+            String name = canonical(head(current));
+            if (name.equals(target)) {
+                String wanted = parameterOf(sup);
+                String offered = parameterOf(current);
+                return wanted == null || offered == null || isSubtype(offered, wanted);
+            }
+            Type type = types.get(name);
             String parent = type == null ? null : type.getExtends();
-            current = parent == null ? null : canonical(head(parent));
+            current = parent;
         }
         return false;
     }

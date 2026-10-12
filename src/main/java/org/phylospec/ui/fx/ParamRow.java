@@ -8,11 +8,14 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.CheckBox;
+import javafx.scene.control.Button;
+import javafx.scene.control.Label;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.ListCell;
 import javafx.scene.control.TextField;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
+import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 
 import org.phylospec.components.Generator;
@@ -41,16 +44,20 @@ public final class ParamRow {
 
         HBox trailing = new HBox(8);
         trailing.setAlignment(Pos.CENTER_LEFT);
+        trailing.setMinWidth(Region.USE_PREF_SIZE);
 
         CheckBox use = null;
         if (!param.required()) {
             use = new CheckBox("use");
+            use.setMinWidth(Region.USE_PREF_SIZE);
             use.selectedProperty().bindBidirectional(param.includeProperty());
             trailing.getChildren().add(use);
         }
         if (param.estimable()) {
             // An indicator is not measured, it is summed over, so the tick says so.
-            CheckBox estimate = new CheckBox(param.isIndicator() ? "average over" : "estimate");
+            CheckBox estimate = new CheckBox(param.isIndicator() ? "average over"
+                    : param.canEditElements() ? "estimate vector" : "estimate");
+            estimate.setMinWidth(Region.USE_PREF_SIZE);
             estimate.selectedProperty().bindBidirectional(param.estimateProperty());
             trailing.getChildren().add(estimate);
         }
@@ -87,6 +94,7 @@ public final class ParamRow {
             return partitionList(analysis, param);
         }
         Library library = analysis.library();
+        if (param.canEditElements()) return vectorEditor(analysis, param);
         return param.isComponentValued()
                 ? componentEditor(analysis, candidatesFor(library, param), param.priorProperty(),
                         chosen -> param.nestedChoice(chosen, library, analysis.support()))
@@ -165,6 +173,45 @@ public final class ParamRow {
         return field;
     }
 
+    private static Node vectorEditor(Analysis analysis, Param param) {
+        VBox box = new VBox(4);
+        Runnable rebuild = new Runnable() {
+            @Override public void run() {
+                box.getChildren().clear();
+                if (param.elements().isEmpty()) {
+                    Button edit = new Button("Edit entries");
+                    Label error = new Label();
+                    edit.setOnAction(event -> {
+                        try {
+                            param.editElements(analysis.library());
+                            run();
+                        } catch (IllegalArgumentException failure) {
+                            error.setText(failure.getMessage());
+                        }
+                    });
+                    box.getChildren().addAll(valueField(param), edit, error);
+                } else {
+                    GridPane entries = Form.grid();
+                    for (Param entry : param.elements()) add(entries, analysis, entry);
+                    Button add = new Button("+");
+                    Button remove = new Button("−");
+                    add.setOnAction(event -> {
+                        param.addElement("1.0", analysis.library());
+                        run();
+                    });
+                    remove.setDisable(param.elements().size() == 1);
+                    remove.setOnAction(event -> {
+                        param.removeLastElement();
+                        run();
+                    });
+                    box.getChildren().addAll(entries, new HBox(6, add, remove));
+                }
+            }
+        };
+        rebuild.run();
+        return box;
+    }
+
     /** The components that can supply this argument: distributions for a prior, functions otherwise. */
     private static List<Generator> candidatesFor(Library library, Param param) {
         return param.isDistributionValued()
@@ -185,10 +232,9 @@ public final class ParamRow {
     public static Node distributionEditor(Analysis analysis, Param param) {
         Library library = analysis.library();
         return componentEditor(analysis,
-                library.priorsFor(param.priorSupport(), param.isClockRates()), param.priorProperty(),
-                chosen -> Component.sized(
-                        Component.prior(chosen, param.dimension(), library,
-                                param.priorSupport(), param.isClockRates()), param));
+                library.priorsFor(param.priorSupport(), param.isClockRates()).stream()
+                        .filter(analysis.support()::supports).toList(), param.priorProperty(),
+                chosen -> Component.distributionFor(chosen, param, library, analysis.support()));
     }
 
     /**

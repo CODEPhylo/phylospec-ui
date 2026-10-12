@@ -75,6 +75,7 @@ public final class ScriptWriter {
         into.addAll(analysis.library().namespacesFor(component.generator()));
         for (Param param : component.params()) {
             collectNamespaces(param.priorProperty().get(), into, visited);
+            for (Param entry : param.elements()) collectNamespaces(entry.priorProperty().get(), into, visited);
         }
     }
 
@@ -392,9 +393,14 @@ public final class ScriptWriter {
     private void declarations(Component component, Slot slot, List<String> statements) {
         // A prior shared by two trees is one set of parameters, so it declares them once.
         if (!declared.add(component)) return;
-        for (Param param : component.params()) {
+        declarations(component.params(), slot, statements);
+    }
+
+    private void declarations(List<Param> params, Slot slot, List<String> statements) {
+        for (Param param : params) {
             // An argument left out of the call would leave its prior declared but unused.
             if (!param.includeProperty().get()) continue;
+            if (!param.isEstimated()) declarations(param.elements(), slot, statements);
             Component nested = param.priorProperty().get();
             if (nested != null && !param.isEstimated()) {
                 declarations(nested, slot, statements);
@@ -520,6 +526,10 @@ public final class ScriptWriter {
 
     private String valueOf(Param param, Slot slot) {
         if (param.isEstimated()) return param.variableProperty().get();
+        if (!param.elements().isEmpty()) {
+            return param.elements().stream().map(entry -> valueOf(entry, slot))
+                    .collect(Collectors.joining(", ", "[", "]"));
+        }
         if (param.isComponentValued()) {
             Component nested = param.priorProperty().get();
             if (nested == null || nested.generator() == null) return "/* choose a " + param.type() + " */";

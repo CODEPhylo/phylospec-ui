@@ -193,9 +193,14 @@ public final class Analysis {
     }
 
     private static void collectEstimated(Component component, List<Param> into) {
-        for (Param param : component.params()) {
+        collectEstimated(component.params(), into);
+    }
+
+    private static void collectEstimated(List<Param> params, List<Param> into) {
+        for (Param param : params) {
             // An argument left out of the call is not part of the model, so it gets no prior.
             if (!param.includeProperty().get()) continue;
+            if (!param.isEstimated()) collectEstimated(param.elements(), into);
             Component nested = param.priorProperty().get();
             // A nested function's own arguments may be estimated; a prior's hyperparameters cannot.
             if (nested != null && (!param.isEstimated() || param.isClockRates())) {

@@ -417,7 +417,7 @@ public class PhyloSpecUI extends Application {
 
         status.getStyleClass().removeAll("status-ok", "status-error", "status-warning");
         if (shown.isEmpty()) {
-            status.setText("Script is valid.");
+            status.setText("Syntax and types checked. Engine-specific checks run in the backend.");
             status.getStyleClass().add("status-ok");
         } else {
             String more = shown.size() > 1 ? "  (+" + (shown.size() - 1) + " more)" : "";
@@ -446,7 +446,7 @@ public class PhyloSpecUI extends Application {
         Path path = chosen.toPath();
         Analysis loaded;
         try {
-            loaded = ScriptReader.read(analysis.library(), Files.readString(path));
+            loaded = ScriptReader.read(analysis.library(), analysis.support(), path);
         } catch (IOException e) {
             new Alert(Alert.AlertType.ERROR, "Could not read " + path.getFileName() + ": "
                     + e.getMessage()).showAndWait();

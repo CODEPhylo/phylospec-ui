@@ -15,8 +15,8 @@ import org.phylospec.typeresolver.TypeResolver;
 /**
  * Checks generated scripts with the real PhyloSpec lexer, parser and type resolver.
  *
- * <p>Using the reference implementation rather than the GUI's own idea of validity means the status
- * bar reports exactly what an engine would.
+ * <p>This checks public syntax and types, not engine-specific bounds, parameter combinations,
+ * calibration monophyly or starting-state density. Those are checked by the backend.
  */
 public final class Validator {
 

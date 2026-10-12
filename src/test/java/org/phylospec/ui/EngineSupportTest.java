@@ -120,7 +120,7 @@ public class EngineSupportTest {
      */
     @Test
     void argumentOrderDoesNotDecideAMatch() {
-        assertTrue(beast2.supports(generator("PhyloCTMC", 0)));
+        assertTrue(beast2.supports(legacyPhyloCTMC(generator("PhyloCTMC", 0))));
     }
 
     /**
@@ -150,8 +150,22 @@ public class EngineSupportTest {
         List<Generator> likelihoods = library.overloads("PhyloCTMC");
         assertEquals(2, likelihoods.size());
 
-        List<Boolean> supported = likelihoods.stream().map(beast2::supports).toList();
+        List<Boolean> supported = likelihoods.stream().map(EngineSupportTest::legacyPhyloCTMC)
+                .map(beast2::supports).toList();
         assertEquals(List.of(true, false), supported, "only the qMatrix signature is implemented");
+    }
+
+    @Test
+    void legacySnapshotDoesNotClaimNewAmbiguityArgument() {
+        assertFalse(beast2.supports(generator("PhyloCTMC", 0)));
+    }
+
+    /** Keep the historical engine fixture honest while testing its historical argument shape. */
+    private static Generator legacyPhyloCTMC(Generator current) {
+        Generator legacy = new ObjectMapper().convertValue(current, Generator.class);
+        legacy.setArguments(legacy.getArguments().stream()
+                .filter(argument -> !"useAmbiguities".equals(argument.getName())).toList());
+        return legacy;
     }
 
     /**

@@ -1,6 +1,8 @@
 package org.phylospec.ui.spec;
 
 import java.nio.file.Path;
+import java.nio.file.Files;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -47,9 +49,15 @@ public final class ScriptReader {
     }
 
     private final Library library;
+    private final EngineSupport support;
+    private final Path directory;
 
     /** Every {@code ~} statement in the model block, by variable name. */
     private final Map<String, Stmt.Draw> draws = new LinkedHashMap<>();
+
+    // Per-entry editors own independent priors; they cannot represent a shared sampled scalar.
+    private final Set<String> vectorEntryDraws = new LinkedHashSet<>();
+    private final Set<String> boundDraws = new LinkedHashSet<>();
 
     /**
      * Every {@code =} statement in the model block that names a function-valued intermediate, and
@@ -76,8 +84,10 @@ public final class ScriptReader {
     private boolean sawLikelihood;
     private Expr.Call clockMixture;
 
-    private ScriptReader(Library library) {
+    private ScriptReader(Library library, EngineSupport support, Path directory) {
         this.library = library;
+        this.support = support;
+        this.directory = directory;
     }
 
     /**
@@ -86,12 +96,22 @@ public final class ScriptReader {
      * @throws Unsupported if the script does not parse, or says something the tabs cannot express
      */
     public static Analysis read(Library library, String source) {
-        return new ScriptReader(library).build(source);
+        return read(library, EngineSupport.unclaimed(), source);
+    }
+
+    public static Analysis read(Library library, EngineSupport support, String source) {
+        return new ScriptReader(library, support, null).build(source);
+    }
+
+    /** Keep installed capabilities and resolve data paths relative to the opened script. */
+    public static Analysis read(Library library, EngineSupport support, Path path) throws IOException {
+        Path absolute = path.toAbsolutePath().normalize();
+        return new ScriptReader(library, support, absolute.getParent()).build(Files.readString(absolute));
     }
 
     private Analysis build(String source) {
         List<Stmt> statements = parse(source);
-        Analysis analysis = new Analysis(library);
+        Analysis analysis = new Analysis(library, support);
 
         for (Stmt statement : statements) {
             if (statement instanceof Stmt.Draw draw && Stmt.Block.MODEL.equals(draw.block)) {
@@ -177,7 +197,9 @@ public final class ScriptReader {
         Expr file = argument(call, "file");
         if (file == null) throw new Unsupported(call.functionName + " needs a file argument.");
 
-        Partition partition = new Partition(Path.of(text(file, "file")));
+        Path data = Path.of(text(file, "file"));
+        if (directory != null && !data.isAbsolute()) data = directory.resolve(data).normalize();
+        Partition partition = new Partition(data);
         partition.nameProperty().set(assignment.name);
         readTipDates(partition, call);
         readSpecies(partition, call);
@@ -516,7 +538,23 @@ public final class ScriptReader {
     }
 
     private void bindValue(Param param, Expr value, boolean argsEstimable) {
+        if (value instanceof Expr.Array array && param.canEditElements()
+                && array.elements.stream().anyMatch(element ->
+                        element instanceof Expr.Variable variable && draws.containsKey(variable.variableName))) {
+            for (Expr element : array.elements) {
+                if (element instanceof Expr.Variable variable && draws.containsKey(variable.variableName)) {
+                    vectorEntryDraws.add(variable.variableName);
+                }
+            }
+            param.estimateProperty().set(false);
+            for (Expr element : array.elements) bindValue(param.addElement("0", library), element, argsEstimable);
+            return;
+        }
         if (value instanceof Expr.Variable variable && draws.containsKey(variable.variableName)) {
+            if (!boundDraws.add(variable.variableName) && vectorEntryDraws.contains(variable.variableName)) {
+                throw new Unsupported("Repeated sampled vector entry " + variable.variableName
+                        + " cannot be edited as independent entries without changing its prior.");
+            }
             if (!param.estimable()) {
                 throw new Unsupported(param.name() + " is drawn from a distribution, "
                         + "which this tab cannot express for a value of type " + param.type() + ".");
@@ -558,7 +596,7 @@ public final class ScriptReader {
     }
 
     private Component nested(Expr.Call call, boolean argsEstimable) {
-        Component component = Component.nested(overloadFor(call), library, argsEstimable);
+        Component component = Component.nested(overloadFor(call), library, argsEstimable, support);
         bind(component, call, argsEstimable);
         return component;
     }

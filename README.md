@@ -33,6 +33,110 @@ The first of those installs phylospec's parent pom, which `phylospec-core` needs
 
 Verified against phylospec `b8e96901` (26 Aug 2026), component library 1.4.0.
 
+### CalibratedCPP adapter
+
+Build the adapter in a sibling CalibratedCPP checkout (with compatible PhyloSpec artifacts already
+installed), then load its packaged directory. This adapter requires Java 25 or later, including
+when loading it in the UI. No component JSON is copied into the UI:
+
+```sh
+(cd ../CalibratedCPP && mvn -Pphylospec -pl phylospec-adapter -am clean package)
+CPP_ADAPTER="$(cd ../CalibratedCPP && pwd)/phylospec-adapter/target/calibratedcpp-phylospec-adapter-0.0.1-SNAPSHOT"
+mvn package
+bin/phylospec-ui --adapter-path "$CPP_ADAPTER"
+```
+
+Use **File → Open** to load `examples/calibratedcpp/skyline.phylospec`. Its small synthetic alignment
+is resolved relative to the script. The Tree Prior tab uses the adapter's component metadata and
+engine capabilities for `CalibratedBirthDeath`, `CalibratedBirthDeathSkyline` and
+`CalibratedAgeDependentExtinction`, including their nested calibration forest and lifetime inputs.
+This covers the adapter's extant-taxon models with root or origin conditioning, not every native
+package mode. An estimated `origin` needs an `initialOrigin` above the initial root. With origin,
+omit full-tree calibrations; without origin, supply a bounded root calibration.
+
+For a numeric vector without a prescribed length, **Edit entries** gives ordinary scalar inputs
+with individual **estimate** checkboxes. Their priors appear on the Priors tab. **Estimate vector**
+instead assigns one distribution to the whole vector; these two modes do not create simultaneous
+priors. The example uses two independent Normal diversification rates (negative values are legal)
+and an `OrderedUniform(count=1, upper=1)` relative change time. Keep the number of change times one
+less than the number of rates. Supply exactly two skyline parameterisations; reproductive number
+and turnover cannot be that pair. The component descriptions explain these engine-specific rules.
+Importing a script that reuses a sampled scalar in multiple vector entries is explicitly refused:
+the current entry editors cannot express that sharing without changing the model. Such scripts
+can still be run directly by the backend.
+
+Calibration information currently uses annotated Newick, not a graphical calibration editor.
+The example bounds the AB clade and the all-taxa root. `calibrationMode` chooses `joint` (soft
+calibration-age density) or `independentUniform` (independent bounded MRCA-age densities).
+`conditionOnCalibrations=false` changes the CPP conditioning, but does not remove the selected
+calibration-age density. Bounds and taxon names remain part of the annotated Newick input.
+The status bar checks syntax and types; data-dependent and engine-specific checks run in the backend.
+
+To execute the example without the UI, use a fresh directory so the script's `outputPrefix="analysis"`
+cannot overwrite previous results:
+
+```sh
+CPP_EXAMPLE="$PWD/examples/calibratedcpp/skyline.phylospec"
+CPP_RUN_DIR=$(mktemp -d /private/tmp/calibratedcpp-run.XXXXXX)
+(cd "$CPP_RUN_DIR" && java -cp "$CPP_ADAPTER/*" runner.PhyloSpecCli \
+  --library calibratedcpp,beast2 "$CPP_EXAMPLE")
+ls "$CPP_RUN_DIR"/analysis.*
+```
+
+This is a 200-step functional check, not a convergence or statistical-equivalence test. Run the
+metadata, script round-trip, packaged-runner and invalid-input tests with:
+
+```sh
+mvn -Dphylospec.calibratedAdapter="$CPP_ADAPTER" test
+# Also exercise actual JavaFX controls; requires a desktop/display:
+mvn -Dtest=CalibratedFormTest -Dphylospec.fxTests=true \
+  -Dphylospec.calibratedAdapter="$CPP_ADAPTER" test
+```
+
+#### Continuous branch rates with ClockModelAveraging
+
+`examples/calibratedcpp/continuous.phylospec` is a four-taxon functional example combining CPP,
+GTR, four-category Gamma site rates, and a continuous lognormal clock. It is not the empirical cats
+dataset or a convergence analysis. Load the CPP runtime directory above plus these two compatible,
+already-built ClockModelAveraging JARs; do not add a second full runtime bundle with stale core JARs:
+
+```sh
+CLOCK_ROOT="$(cd ../RelaxClockAveraging && pwd)"
+CLOCK_JARS="$CLOCK_ROOT/phylospec-adapter/target/phylospec-adapter-0.1.0.jar:$CLOCK_ROOT/mixture-beast/target/mixture-beast-0.1.0.jar"
+bin/phylospec-ui --adapter-path "$CPP_ADAPTER" --adapter-path "$CLOCK_JARS"
+```
+
+Use **File → Open** to open `examples/calibratedcpp/continuous.phylospec` (a bare launch argument
+is an alignment, not a saved script). **Tree Prior** configures CPP and calibrations; **Site Model**
+configures GTR and Gamma; **Clock Model** selects `sharedRatesClock`. In **Priors**, the rate vector
+uses `IID`, whose `base` is `LogNormal(mean=1, logSd=...)`. Keep mean fixed at 1; the base's Log sd
+can be estimated and gets its own prior. **Likelihood** exposes `Use ambiguities`; the example
+enables it. Saving and reopening preserves these settings and the nested prior.
+
+Set IID's `Num` explicitly: **6** for this four-taxon rooted binary tree, or **36** for the
+19-taxon cats tree. The current backend rejects `numBranches(tree)` here because that expression
+depends on a sampled tree. The UI does not silently infer a universal binary-tree rule or correct
+an explicitly wrong count. Backend validation still checks the supplied dimension.
+
+Run the UI round-trip, invalid-input and packaged short-chain tests, including actual JavaFX controls:
+
+```sh
+mvn -Dphylospec.calibratedAdapter="$CPP_ADAPTER" \
+  -Dphylospec.clockJars="$CLOCK_JARS" -Dphylospec.fxTests=true package
+```
+
+After exporting a script through the UI, run it in a fresh output directory:
+
+```sh
+CPP_RUN_DIR=$(mktemp -d /private/tmp/calibratedcpp-clock.XXXXXX)
+java -Djava.only=true -cp "$CPP_ADAPTER/*:$CLOCK_JARS" runner.PhyloSpecCli \
+  --library calibratedcpp,clockmodelaveraging,beast2 \
+  --run-name "$CPP_RUN_DIR/analysis" "$PWD/examples/calibratedcpp/continuous.phylospec"
+```
+
+Replace the last path with your exported script. The UI status bar validates syntax/types; it is
+not a claim that calibration bounds, starting values, dimensions or a full MCMC have been checked.
+
 ## The tabs
 
 | Tab | What it sets | Where it lands in the script |

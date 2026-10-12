@@ -34,6 +34,8 @@ public final class Param {
     private final String description;
     private final boolean required;
     private final boolean estimable;
+    private final boolean elementsEstimable;
+    private final List<Param> elements = new ArrayList<>();
     private final boolean indicator;
     private final Integer dimension;
 
@@ -95,10 +97,12 @@ public final class Param {
         this.indicator = isIndicator(argument);
         this.dimension = constrainedLength != null ? constrainedLength : fixedDimension(argument);
         this.dimensionExpression = declaredExpression(argument, library);
+        this.elementsEstimable = estimable;
         this.estimable = estimable && (indicator
-                || isEstimatableType(type, library, dimension != null || dimensionExpression != null));
+                || isEstimatableType(type, library));
         this.value.set(defaultValue(argument, dimension));
-        this.estimate.set(this.estimable && this.required);
+        this.estimate.set(this.estimable && this.required
+                && (!"Vector".equals(Library.head(type)) || dimension != null || dimensionExpression != null));
         this.variable.set(name);
         this.include.set(this.required || argument.getDefault() != null);
     }
@@ -248,15 +252,13 @@ public final class Param {
      * library are discretisation settings — gamma category counts and the like — which are chosen,
      * not inferred, so offering them a prior would be misleading.
      */
-    private static boolean isEstimatableType(String type, Library library, boolean lengthDeclared) {
+    private static boolean isEstimatableType(String type, Library library) {
         // A tree, or anything an engine has declared to be one.
         if (library != null && library.isSubtype(type, "Tree")) return true;
 
-        // A vector of numbers whose length is declared: population sizes on the branches of a
-        // species tree are estimated the same way a single rate is, with one distribution over the
-        // lot of them. Without a declared length there is nothing to tell that distribution how
-        // many to draw, so the vector stays a literal the user writes out.
-        if ("Vector".equals(Library.head(type)) && numeric(Library.inner(type))) return lengthDeclared;
+        // A declared length is supplied to the prior. Otherwise estimation is opt-in and the
+        // user sets the count in the prior (e.g. OrderedUniform), or estimates individual entries.
+        if ("Vector".equals(Library.head(type)) && numeric(Library.inner(type))) return true;
 
         return switch (Library.head(type)) {
             case "Real", "PositiveReal", "Rate", "NonNegativeReal", "Age", "Probability", "Simplex" -> true;
@@ -410,6 +412,61 @@ public final class Param {
 
     public boolean isEstimated() {
         return estimate.get() && estimable;
+    }
+
+    /** Numeric entries use the ordinary scalar editor and priors; no extra vector state is made. */
+    public boolean canEditElements() {
+        return "Vector".equals(Library.head(type)) && numeric(Library.element(type))
+                && dimension == null && dimensionExpression == null && Library.property(type, "num") == null;
+    }
+
+    public List<Param> elements() {
+        return Collections.unmodifiableList(elements);
+    }
+
+    void clearElements() {
+        elements.clear();
+    }
+
+    public Param addElement(String literal, Library library) {
+        if (!canEditElements()) throw new IllegalStateException("This parameter has no editable numeric entries.");
+        Argument argument = new Argument();
+        argument.setName(name + (elements.size() + 1));
+        argument.setType(Library.element(type));
+        argument.setRequired(true);
+        Param entry = new Param(argument, elementsEstimable, library);
+        entry.valueProperty().set(literal);
+        entry.estimateProperty().set(false);
+        entry.estimateProperty().addListener((observable, was, now) -> {
+            if (now && entry.priorProperty().get() == null) {
+                Generator choice = library.defaultPriorFor(entry.type());
+                if (choice != null) entry.priorProperty().set(Component.prior(choice, null, library, entry.type()));
+            }
+        });
+        elements.add(entry);
+        return entry;
+    }
+
+    /** Entering per-entry mode never discards an expression that we cannot safely interpret. */
+    public void editElements(Library library) {
+        if (!elements.isEmpty()) return;
+        String text = value.get().trim();
+        if (!text.startsWith("[") || !text.endsWith("]")) {
+            throw new IllegalArgumentException("Enter a numeric array such as [1.0, 2.0] first.");
+        }
+        String[] values = text.substring(1, text.length() - 1).split(",", -1);
+        for (String entry : values) {
+            try {
+                if (!Double.isFinite(Double.parseDouble(entry.trim()))) throw new NumberFormatException();
+            } catch (NumberFormatException error) {
+                throw new IllegalArgumentException("Per-entry editing requires finite numeric literals.");
+            }
+        }
+        for (String entry : values) addElement(entry.trim(), library);
+    }
+
+    public void removeLastElement() {
+        if (elements.size() > 1) elements.remove(elements.size() - 1);
     }
 
     /** A human-readable label: {@code baseFrequencies} becomes {@code Base frequencies}. */

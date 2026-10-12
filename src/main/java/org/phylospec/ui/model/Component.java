@@ -151,25 +151,32 @@ public final class Component {
         for (Param source : from.params()) {
             Param target = to.param(source.name());
             if (target == null) continue;
-
-            target.valueProperty().set(source.valueProperty().get());
-            target.includeProperty().set(source.includeProperty().get());
-            // Ticking this attaches a default prior, which the copy below then overwrites.
-            target.estimateProperty().set(source.isEstimated());
-
-            Component sourceInner = source.priorProperty().get();
-            if (sourceInner == null || sourceInner.generator() == null) continue;
-
-            Component targetInner = target.priorProperty().get();
-            if (targetInner == null) {
-                targetInner = source.isEstimated()
-                        ? prior(sourceInner.generator(), target.dimension(), to.library,
-                                target.priorSupport(), target.isClockRates())
-                        : nested(sourceInner.generator(), to.library, to.argsEstimable, to.support);
-                target.priorProperty().set(targetInner);
-            }
-            copy(sourceInner, targetInner);
+            copyParam(source, target, to);
         }
+    }
+
+    private static void copyParam(Param source, Param target, Component owner) {
+        target.valueProperty().set(source.valueProperty().get());
+        target.includeProperty().set(source.includeProperty().get());
+        // Ticking this attaches a default prior, which the copy below then overwrites.
+        target.estimateProperty().set(source.isEstimated());
+        target.clearElements();
+        for (Param entry : source.elements()) {
+            copyParam(entry, target.addElement(entry.valueProperty().get(), owner.library), owner);
+        }
+
+        Component sourceInner = source.priorProperty().get();
+        if (sourceInner == null || sourceInner.generator() == null) return;
+
+        Component targetInner = target.priorProperty().get();
+        if (targetInner == null) {
+            targetInner = source.isEstimated()
+                    ? prior(sourceInner.generator(), target.dimension(), owner.library,
+                            target.priorSupport(), target.isClockRates())
+                    : nested(sourceInner.generator(), owner.library, owner.argsEstimable, owner.support);
+            target.priorProperty().set(targetInner);
+        }
+        copy(sourceInner, targetInner);
     }
 
     private void rebuild(Generator chosen) {
@@ -254,6 +261,13 @@ public final class Component {
         return prior;
     }
 
+    /** A distribution-valued input inherits its owner's estimation policy; an ordinary prior does not. */
+    public static Component distributionFor(Generator generator, Param param, Library library, EngineSupport support) {
+        return param.isDistributionValued()
+                ? param.nestedChoice(generator, library, support)
+                : sized(prior(generator, param.dimension(), library, param.priorSupport(), param.isClockRates()), param);
+    }
+
     /**
      * Whether the engines allow this argument to be drawn from a distribution.
      *
@@ -282,9 +296,7 @@ public final class Component {
         if (param.isDistributionValued() || param.isEstimated()) {
             Generator choice = library.defaultPriorFor(param.priorSupport(), param.isClockRates());
             if (choice != null) {
-                param.priorProperty().set(
-                        sized(prior(choice, param.dimension(), library,
-                                param.priorSupport(), param.isClockRates()), param));
+                param.priorProperty().set(distributionFor(choice, param, library, support));
             }
         } else if (param.isComponentValued()) {
             List<Generator> choices = library.producing(param.type());

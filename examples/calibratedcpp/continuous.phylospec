@@ -1,0 +1,43 @@
+use calibratedcpp.types
+use calibratedcpp.functions
+use calibratedcpp.distributions.tree
+use clockmodelaveraging.functions.clock
+
+data {
+    Alignment fourtaxa = fromNexus(file="four-taxa.nex")
+}
+
+model {
+    Simplex pi ~ Dirichlet(concentration=[3.0,3.0,3.0,3.0])
+    PositiveReal rateAC ~ LogNormal(logMean=0.0,logSd=1.0)
+    PositiveReal rateAG ~ LogNormal(logMean=0.0,logSd=1.0)
+    PositiveReal rateAT ~ LogNormal(logMean=0.0,logSd=1.0)
+    PositiveReal rateCG ~ LogNormal(logMean=0.0,logSd=1.0)
+    PositiveReal rateCT ~ LogNormal(logMean=0.0,logSd=1.0)
+    QMatrix qMatrix = gtr(rateAC=rateAC,rateAG=rateAG,rateAT=rateAT,rateCG=rateCG,rateCT=rateCT,rateGT=1.0,baseFrequencies=pi)
+    PositiveReal gamma ~ LogNormal(logMean=0.0,logSd=2.0)
+    Vector<Rate> siteRates ~ DiscreteGammaInv(shape=gamma,numCategories=4,numSites=numSites(fourtaxa))
+    PositiveReal diversification ~ LogNormal(logMean=0.05,logSd=1.0)
+    Probability turnover ~ Beta(alpha=0.5,beta=1.0)
+    SkylineParameter diversificationRate = skylineParameter(values=[diversification])
+    SkylineParameter turnoverRate = skylineParameter(values=[turnover])
+    CalibrationForest calibrations = calibrationForest(newick="((D,B)DB[&lower=1.0,upper=2.0],A,C)root[&lower=2.5,upper=4.0];")
+    Tree tree ~ CalibratedBirthDeathSkyline(
+        diversificationRate=diversificationRate,turnover=turnoverRate,rho=0.5,
+        calibrations=calibrations,calibrationMode="joint",conditionOnCalibrations=true,
+        initialNewick="(((D:1.4,B:1.4):0.5,A:1.9):1.1,C:3.0);")
+    PositiveReal sigma ~ LogNormal(logMean=-0.693,logSd=0.5)
+    Rate meanRate ~ LogNormal(logMean=-2.0,logSd=1.0)
+    Vector<Rate> rates ~ IID(base=LogNormal(mean=1.0,logSd=sigma),num=6)
+    Vector<Rate> branchRates = sharedRatesClock(tree=tree,rates=rates,meanRate=meanRate,normalize=false)
+    Alignment<Character> fourtaxaAlignment ~ PhyloCTMC(
+        tree=tree,qMatrix=qMatrix,siteRates=siteRates,branchRates=branchRates,useAmbiguities=true
+    ) observed as fourtaxa
+}
+
+mcmc {
+    Integer chainLength = 200
+    Integer defaultLogEvery = 10
+    String outputPrefix = "analysis"
+    Integer randomSeed = 12345
+}
