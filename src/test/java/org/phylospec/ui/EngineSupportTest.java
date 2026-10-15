@@ -164,8 +164,16 @@ public class EngineSupportTest {
     private static Generator legacyPhyloCTMC(Generator current) {
         Generator legacy = new ObjectMapper().convertValue(current, Generator.class);
         legacy.setArguments(legacy.getArguments().stream()
-                .filter(argument -> !"useAmbiguities".equals(argument.getName())).toList());
+                .filter(argument -> !List.of("useAmbiguities", "mutationRate").contains(argument.getName())).toList());
         return legacy;
+    }
+
+    @Test
+    void legacySnapshotDoesNotClaimPartitionMutationRates() {
+        Generator current = new ObjectMapper().convertValue(generator("PhyloCTMC", 0), Generator.class);
+        current.setArguments(current.getArguments().stream()
+                .filter(argument -> !"useAmbiguities".equals(argument.getName())).toList());
+        assertFalse(beast2.supports(current), "Do not advertise a new argument through the old beta4 fixture.");
     }
 
     /**

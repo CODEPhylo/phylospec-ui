@@ -51,6 +51,7 @@ public final class ScriptReader {
     private final Library library;
     private final EngineSupport support;
     private final Path directory;
+    private Analysis analysis;
 
     /** Every {@code ~} statement in the model block, by variable name. */
     private final Map<String, Stmt.Draw> draws = new LinkedHashMap<>();
@@ -58,6 +59,13 @@ public final class ScriptReader {
     // Per-entry editors own independent priors; they cannot represent a shared sampled scalar.
     private final Set<String> vectorEntryDraws = new LinkedHashSet<>();
     private final Set<String> boundDraws = new LinkedHashSet<>();
+    private final Map<String, Param> drawnParams = new LinkedHashMap<>();
+    private final Set<String> ambiguousDraws = new LinkedHashSet<>();
+    private final Map<Param, String> references = new LinkedHashMap<>();
+    private final Map<String, Expr.Array> vectors = new LinkedHashMap<>();
+    private final Set<String> boundVectors = new LinkedHashSet<>();
+    private final Map<String, Param> componentVectors = new LinkedHashMap<>();
+    private final Map<Param, String> vectorReferences = new LinkedHashMap<>();
 
     /**
      * Every {@code =} statement in the model block that names a function-valued intermediate, and
@@ -73,7 +81,8 @@ public final class ScriptReader {
     private final Map<String, Wiring> wiring = new LinkedHashMap<>();
 
     /** The structural variables one observation names. Absent ones are null. */
-    private record Wiring(String tree, String qMatrix, String siteRates, String branchRates) {}
+    private record Wiring(String tree, String qMatrix, String siteRates, String branchRates, Expr mutationRate) {}
+    private record SiteKey(String matrix, String sites, Expr mutationRate) {}
 
     /** Components built from a drawn variable, so that a shared one is built once. */
     private final Map<String, Component> byVariable = new LinkedHashMap<>();
@@ -83,6 +92,8 @@ public final class ScriptReader {
     /** Whether a likelihood has been read, so that a second one can be compared against it. */
     private boolean sawLikelihood;
     private Expr.Call clockMixture;
+    private Expr.Call latentObservation;
+    private final Set<String> latentAlignments = new LinkedHashSet<>();
 
     private ScriptReader(Library library, EngineSupport support, Path directory) {
         this.library = library;
@@ -111,7 +122,7 @@ public final class ScriptReader {
 
     private Analysis build(String source) {
         List<Stmt> statements = parse(source);
-        Analysis analysis = new Analysis(library, support);
+        analysis = new Analysis(library, support);
 
         for (Stmt statement : statements) {
             if (statement instanceof Stmt.Draw draw && Stmt.Block.MODEL.equals(draw.block)) {
@@ -125,6 +136,8 @@ public final class ScriptReader {
                 // type rather than by the name `qMatrix`, since unlinked partitions have one each.
                 if ("QMatrix".equals(head(assignment.type))) {
                     matrices.put(assignment.name, callOf(assignment.expression, assignment.name));
+                } else if (assignment.expression instanceof Expr.Array array) {
+                    vectors.put(assignment.name, array);
                 } else {
                     intermediates.put(assignment.name, callOf(assignment.expression, assignment.name));
                 }
@@ -156,15 +169,56 @@ public final class ScriptReader {
         // grouping follows from it: partitions naming the same variable share the model behind it.
         sawModel |= buildGroups(analysis);
 
+        for (var entry : vectorReferences.entrySet()) {
+            Param target = componentVectors.get(entry.getValue());
+            if (target == null || !library.isSubtype(target.type(), entry.getKey().type())) {
+                throw new Unsupported("Component vector " + entry.getValue()
+                        + " needs a compatible editable owner in the model tabs.");
+            }
+            entry.getKey().referenceProperty().set(target);
+            if (!entry.getKey().validReference(library, support)) {
+                throw new Unsupported("Incompatible parameter or vector index for " + entry.getKey().name() + ".");
+            }
+        }
+
+        for (var entry : references.entrySet()) {
+            Param target = drawnParams.get(entry.getValue());
+            if (target == null || ambiguousDraws.contains(entry.getValue())
+                    || !analysis.estimatedParams().contains(target)) {
+                throw new Unsupported("The referenced parameter " + entry.getValue()
+                        + " needs an estimated parameter or vector entry in the model tabs.");
+            }
+            entry.getKey().referenceProperty().set(target);
+            if (!entry.getKey().validReference(library, support)) {
+                throw new Unsupported("Incompatible parameter or vector index for " + entry.getKey().name() + ".");
+            }
+        }
+
         if (analysis.partitions().isEmpty()) throw new Unsupported("The script loads no alignment.");
         if (!sawLikelihood) throw new Unsupported("No alignment is observed under a likelihood.");
         if (!sawModel) throw new Unsupported("The script has no substitution model or tree prior.");
+
+        if (analysis.isReadCount()) {
+            if (analysis.partitions().size() != 1 || !analysis.partitions().getFirst().isReadCount()) {
+                throw new Unsupported("ReadCountModel currently requires one read-count partition in this UI.");
+            }
+            Partition partition = analysis.partitions().getFirst();
+            Expr taxa = argument(drawnCall(partition.tree().name()), "taxa");
+            if (!(taxa instanceof Expr.Call accessor) || !"readCountTaxa".equals(accessor.functionName)
+                    || !partition.name().equals(variableArgument(accessor, "counts"))) {
+                throw new Unsupported("The read-count tree must use readCountTaxa(counts=the observed data); "
+                        + "other taxon selections cannot be preserved by this UI.");
+            }
+        }
 
         for (String name : intermediates.keySet()) {
             if (!claimed.contains(name)) {
                 throw new Unsupported("Nothing in the model uses " + name + ", "
                         + "and the tabs have nowhere to keep it.");
             }
+        }
+        for (String name : vectors.keySet()) {
+            if (!boundVectors.contains(name)) throw new Unsupported("Nothing in the model uses vector " + name + ".");
         }
         return analysis;
     }
@@ -190,7 +244,7 @@ public final class ScriptReader {
             throw new Unsupported("Only alignment assignments are supported in the data block.");
         }
         Expr.Call call = callOf(assignment.expression, assignment.name);
-        if (!List.of("fromNexus", "fromFasta").contains(call.functionName)) {
+        if (!List.of("fromNexus", "fromFasta", "fromReadCountNexus").contains(call.functionName)) {
             throw new Unsupported("Unsupported data loader: " + call.functionName + ".");
         }
 
@@ -200,9 +254,23 @@ public final class ScriptReader {
         Path data = Path.of(text(file, "file"));
         if (directory != null && !data.isAbsolute()) data = directory.resolve(data).normalize();
         Partition partition = new Partition(data);
+        if ((partition.isReadCount() || "fromReadCountNexus".equals(call.functionName))
+                && !partition.loader().equals(call.functionName)) {
+            throw new Unsupported("Read-count data require fromReadCountNexus and a readable NEXUS file declaring datatype=readCount.");
+        }
+        if (!partition.loader().equals(call.functionName)) {
+            throw new Unsupported("Cannot preserve " + call.functionName + " for " + data
+                    + ": the UI selects " + partition.loader() + " for this file. "
+                    + "Use a file whose format and extension match the declared loader.");
+        }
         partition.nameProperty().set(assignment.name);
         readTipDates(partition, call);
         readSpecies(partition, call);
+        try {
+            analysis.requireSupportedLoader(partition);
+        } catch (IllegalStateException exception) {
+            throw new Unsupported(exception.getMessage());
+        }
         analysis.partitions().add(partition);
     }
 
@@ -289,11 +357,20 @@ public final class ScriptReader {
             if (!(observed.observedAs instanceof Expr.Variable data)) {
                 throw new Unsupported("An observation must name the alignment it is observed as.");
             }
-            wiring.put(data.variableName, analysis.isClockMixture() ? clockMixtureWiring(call) : new Wiring(
-                    variableArgument(call, "tree"),
-                    variableArgument(call, "qMatrix"),
-                    variableArgument(call, "siteRates"),
-                    variableArgument(call, "branchRates")));
+            Wiring model;
+            if (analysis.isClockMixture()) model = clockMixtureWiring(call);
+            else if (analysis.isLatentObservation()) model = latentObservationWiring(call);
+            else {
+                String matrix = variableArgument(call, "qMatrix");
+                if (argument(call, "qMatrix") instanceof Expr.Call inline) {
+                    matrix = "#" + data.variableName;
+                    matrices.put(matrix, inline);
+                }
+                model = new Wiring(variableArgument(call, "tree"), matrix,
+                        variableArgument(call, "siteRates"), variableArgument(call, "branchRates"),
+                        argument(call, "mutationRate"));
+            }
+            wiring.put(data.variableName, model);
             return true;
         }
 
@@ -303,6 +380,53 @@ public final class ScriptReader {
 
         throw new Unsupported("Unsupported statement in the model block: "
                 + statement.getClass().getSimpleName() + ".");
+    }
+
+    /** Only the explicit latent PhyloCTMC composition can be preserved by this observation preset. */
+    private Wiring latentObservationWiring(Expr.Call observation) {
+        if ("ReadCountModel".equals(observation.functionName)) {
+            Set<String> sampled = new LinkedHashSet<>();
+            for (String name : List.of("epsilon", "delta", "t", "v", "s", "w1", "w2")) {
+                String variable = variableArgument(observation, name);
+                if (variable != null && draws.containsKey(variable) && !sampled.add(variable)) {
+                    throw new Unsupported("Sharing sampled read-count parameters between inputs cannot be preserved by this UI.");
+                }
+            }
+        }
+        String epsilon = variableArgument(observation, "epsilon");
+        if (epsilon != null && epsilon.equals(variableArgument(observation, "delta")) && draws.containsKey(epsilon)) {
+            throw new Unsupported("Sharing one sampled parameter between epsilon and delta cannot be preserved by this UI.");
+        }
+        if (latentObservation != null && !alikeApartFrom(latentObservation, observation, "alignment")) {
+            throw new Unsupported("Observation partitions must share the same error parameters in this UI.");
+        }
+        latentObservation = observation;
+        String latent = variableArgument(observation, "alignment");
+        if (latent == null || !draws.containsKey(latent)) {
+            throw new Unsupported(observation.functionName + " requires a named latent alignment drawn from PhyloCTMC, not observed data.");
+        }
+        if (!latentAlignments.add(latent)) {
+            throw new Unsupported("Sharing one latent alignment between observations cannot be preserved by this UI.");
+        }
+        Expr.Call call = drawnCall(latent);
+        if (!"PhyloCTMC".equals(call.functionName)) {
+            throw new Unsupported(observation.functionName + " currently supports only a latent PhyloCTMC alignment.");
+        }
+        for (Expr.Argument argument : observation.arguments) {
+            if (argument instanceof Expr.DrawnArgument) {
+                throw new Unsupported("Declare sampled error parameters as named variables before using this UI.");
+            }
+        }
+        for (Expr.Argument argument : call.arguments) {
+            if (argument instanceof Expr.DrawnArgument
+                    || !List.of("tree", "qMatrix", "siteRates", "branchRates").contains(argument.name)
+                    || variableArgument(call, argument.name) == null) {
+                throw new Unsupported("The latent PhyloCTMC must use named tree, qMatrix, siteRates and branchRates; "
+                        + "additional inputs cannot be preserved by this UI preset.");
+            }
+        }
+        return new Wiring(variableArgument(call, "tree"), variableArgument(call, "qMatrix"),
+                variableArgument(call, "siteRates"), variableArgument(call, "branchRates"), null);
     }
 
     /** Recognises only the composition the clock-averaging preset can preserve on re-export. */
@@ -363,7 +487,7 @@ public final class ScriptReader {
                         drawnCall(strictSite), drawnCall(relaxedSite), ""))) {
             throw new Unsupported("Both components must use identical site-rate calls and shared parameter expressions.");
         }
-        return new Wiring(tree, matrix, relaxedSite, variableArgument(relaxed, "branchRates"));
+        return new Wiring(tree, matrix, relaxedSite, variableArgument(relaxed, "branchRates"), null);
     }
 
     private static String requiredVariable(Expr.Call call, String name) {
@@ -394,7 +518,7 @@ public final class ScriptReader {
         if (wiring.isEmpty()) return false;
         boolean sawModel = false;
 
-        Map<String, SiteModel> siteModels = new LinkedHashMap<>();
+        Map<SiteKey, SiteModel> siteModels = new LinkedHashMap<>();
         Map<String, TreeModel> trees = new LinkedHashMap<>();
         Map<String, Component> clocks = new LinkedHashMap<>();
 
@@ -404,7 +528,7 @@ public final class ScriptReader {
                 throw new Unsupported(partition.name() + " is loaded but never observed.");
             }
 
-            String siteKey = used.qMatrix() + "/" + used.siteRates();
+            SiteKey siteKey = new SiteKey(used.qMatrix(), used.siteRates(), used.mutationRate());
             SiteModel siteModel = siteModels.get(siteKey);
             if (siteModel == null) {
                 siteModel = siteModels.isEmpty()
@@ -421,6 +545,11 @@ public final class ScriptReader {
                 }
                 if (used.siteRates() != null) {
                     bind(siteModel.siteRates(), drawnCall(used.siteRates()), true);
+                }
+                if (used.mutationRate() != null) {
+                    if (siteModel.mutationRate() == null) throw new Unsupported("Load metadata supporting mutationRate.");
+                    siteModel.mutationRate().includeProperty().set(true);
+                    bindValue(siteModel.mutationRate(), used.mutationRate(), true);
                 }
             }
             partition.siteModelProperty().set(siteModel);
@@ -538,6 +667,40 @@ public final class ScriptReader {
     }
 
     private void bindValue(Param param, Expr value, boolean argsEstimable) {
+        if (value instanceof Expr.Index index) {
+            bindIndex(param, index);
+            return;
+        }
+        if (value instanceof Expr.Variable variable && vectors.containsKey(variable.variableName)) {
+            if (param.canEditComponents()) {
+                if (componentVectors.get(variable.variableName) == param) return;
+                if (!argsEstimable || componentVectors.containsKey(variable.variableName)) {
+                    vectorReferences.put(param, variable.variableName);
+                    return;
+                }
+                componentVectors.put(variable.variableName, param);
+                boundVectors.add(variable.variableName);
+                Set<String> entries = new LinkedHashSet<>();
+                for (Expr element : vectors.get(variable.variableName).elements) {
+                    if (!(element instanceof Expr.Variable named && intermediates.containsKey(named.variableName))) {
+                        throw new Unsupported("Component vector entries must name function-valued model variables.");
+                    }
+                    if (!entries.add(named.variableName)) {
+                        throw new Unsupported("Repeated component vector entry " + named.variableName
+                                + " cannot be edited as independently owned components.");
+                    }
+                    bindValue(param.addElement("", library, support), element, argsEstimable);
+                }
+                if (param.elements().isEmpty()) throw new Unsupported("An editable component vector cannot be empty.");
+                return;
+            }
+            if (!param.canEditElements() || !boundVectors.add(variable.variableName)) {
+                throw new Unsupported("Named vector " + variable.variableName
+                        + " must be used by one editable numeric vector argument.");
+            }
+            bindValue(param, vectors.get(variable.variableName), argsEstimable);
+            return;
+        }
         if (value instanceof Expr.Array array && param.canEditElements()
                 && array.elements.stream().anyMatch(element ->
                         element instanceof Expr.Variable variable && draws.containsKey(variable.variableName))) {
@@ -551,15 +714,34 @@ public final class ScriptReader {
             return;
         }
         if (value instanceof Expr.Variable variable && draws.containsKey(variable.variableName)) {
-            if (!boundDraws.add(variable.variableName) && vectorEntryDraws.contains(variable.variableName)) {
-                throw new Unsupported("Repeated sampled vector entry " + variable.variableName
-                        + " cannot be edited as independent entries without changing its prior.");
+            // A shared likelihood may be bound again for another partition. Its own parameter
+            // is still the owner, not a second input referencing that owner.
+            if (drawnParams.get(variable.variableName) == param) return;
+            if (drawnParams.containsKey(variable.variableName) && param.canReference(support)) {
+                param.estimateProperty().set(false);
+                references.put(param, variable.variableName);
+                return;
+            }
+            if (!param.estimable() && param.canReference(support)) {
+                references.put(param, variable.variableName);
+                return;
             }
             if (!param.estimable()) {
                 throw new Unsupported(param.name() + " is drawn from a distribution, "
                         + "which this tab cannot express for a value of type " + param.type() + ".");
             }
+            if (!boundDraws.add(variable.variableName) && vectorEntryDraws.contains(variable.variableName)) {
+                throw new Unsupported("Repeated sampled vector entry " + variable.variableName
+                        + " cannot be edited as independent entries without changing its prior.");
+            }
             param.estimateProperty().set(true);
+            param.setDrawType(typeName(draws.get(variable.variableName).type), library);
+            Param previous = drawnParams.putIfAbsent(variable.variableName, param);
+            if (previous != null && previous != param) {
+                // Shared component bindings are handled earlier; other duplicate owners cannot
+                // safely serve as the target of a later hyperparameter reference.
+                ambiguousDraws.add(variable.variableName);
+            }
             param.priorProperty().set(
                     priorFrom(callOf(draws.get(variable.variableName).expression, param.name()), param));
             return;
@@ -577,6 +759,39 @@ public final class ScriptReader {
             return;
         }
         param.valueProperty().set(text(value, param.name()));
+    }
+
+    /** A vector is sampled once; scalar inputs retain a live, one-based reference to it. */
+    private void bindIndex(Param param, Expr.Index index) {
+        if (!param.canReference(support) || !(index.object instanceof Expr.Variable variable)
+                || index.indices.size() != 1 || !(index.indices.getFirst() instanceof Expr.Literal)) {
+            throw new Unsupported("A vector reference needs a named sampled vector and one fixed positive integer index.");
+        }
+        int position;
+        try {
+            position = Integer.parseInt(text(index.indices.getFirst(), param.name()));
+        } catch (NumberFormatException e) {
+            throw new Unsupported("Vector indices must be fixed positive integers.");
+        }
+        if (position < 1) throw new Unsupported("Vector indices start at 1.");
+        Stmt.Draw draw = draws.get(variable.variableName);
+        if (draw == null || !"Vector".equals(head(draw.type))) {
+            throw new Unsupported("The indexed parameter " + variable.variableName + " must be a sampled numeric vector.");
+        }
+        Param target = drawnParams.get(variable.variableName);
+        if (target == null) {
+            try {
+                target = analysis.addSharedVector(variable.variableName, typeName(draw.type));
+            } catch (IllegalArgumentException e) {
+                throw new Unsupported(e.getMessage());
+            }
+            drawnParams.put(variable.variableName, target);
+            boundDraws.add(variable.variableName);
+            target.priorProperty().set(priorFrom(callOf(draw.expression, draw.name), target));
+        }
+        param.estimateProperty().set(false);
+        param.referenceIndexProperty().set(position);
+        references.put(param, variable.variableName);
     }
 
     /** A component for a nested call: a prior, a distribution-valued argument, or a function. */

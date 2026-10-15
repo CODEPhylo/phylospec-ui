@@ -33,6 +33,10 @@ public final class ScriptWriter {
 
     /** Components already written out, since a shared one must not declare its params twice. */
     private final Set<Component> declared = Collections.newSetFromMap(new IdentityHashMap<>());
+    private final Set<Param> estimated = Collections.newSetFromMap(new IdentityHashMap<>());
+    private final Set<Param> componentVectors = Collections.newSetFromMap(new IdentityHashMap<>());
+    private final Set<Param> writtenParams = Collections.newSetFromMap(new IdentityHashMap<>());
+    private final Set<Param> visiting = Collections.newSetFromMap(new IdentityHashMap<>());
 
     private ScriptWriter(Analysis analysis) {
         this.analysis = analysis;
@@ -43,6 +47,7 @@ public final class ScriptWriter {
     }
 
     private String build() {
+        analysis.partitions().forEach(analysis::requireSupportedLoader);
         reserveNames();
 
         StringBuilder out = new StringBuilder();
@@ -67,6 +72,17 @@ public final class ScriptWriter {
         for (Component component : analysis.components()) {
             collectNamespaces(component, found, visited);
         }
+        for (Param param : analysis.extraParams()) {
+            if (param.includeProperty().get()) collectNamespaces(param.priorProperty().get(), found, visited);
+        }
+        for (Partition partition : analysis.partitions()) {
+            if (!partition.isReadCount()) continue;
+            for (String name : List.of(partition.loader(), "readCountTaxa", "readCountNumSites")) {
+                var generators = analysis.library().overloads(name);
+                if (generators.isEmpty()) throw new IllegalStateException("Load the Phylonco adapter with " + name + " support.");
+                found.addAll(analysis.library().namespacesFor(generators.getFirst()));
+            }
+        }
         return found;
     }
 
@@ -88,11 +104,12 @@ public final class ScriptWriter {
         analysis.trees().forEach(tree -> used.add(tree.name()));
         analysis.partitions().forEach(partition -> used.add(partition.name()));
         nameGroups();
+        componentVectors.addAll(analysis.componentVectors());
         for (Param param : hoisted()) {
             param.variableProperty().set(unique(param.name()));
         }
         for (Param param : analysis.estimatedParams()) {
-            param.variableProperty().set(unique(param.name()));
+            if (estimated.add(param)) param.variableProperty().set(unique(param.name()));
         }
     }
 
@@ -164,12 +181,22 @@ public final class ScriptWriter {
         for (Component component : analysis.components()) {
             collectHoisted(component, found);
         }
+        collectHoisted(analysis.extraParams(), found);
         return found;
     }
 
     private static void collectHoisted(Component component, List<Param> into) {
-        for (Param param : component.params()) {
-            if (!param.includeProperty().get()) continue;
+        collectHoisted(component.params(), into);
+    }
+
+    private static void collectHoisted(List<Param> params, List<Param> into) {
+        for (Param param : params) {
+            if (!param.includeProperty().get() || param.referenceProperty().get() != null) continue;
+            if (!param.isEstimated()) collectHoisted(param.elements(), into);
+            if (param.hasComponentElements()) {
+                into.add(param);
+                continue;
+            }
             Component nested = param.priorProperty().get();
             if (nested == null) continue;
 
@@ -224,7 +251,8 @@ public final class ScriptWriter {
             if (partition.useSpeciesProperty().get()) {
                 args.add("speciesName=" + speciesParseCall(partition));
             }
-            statements.add(call("Alignment " + partition.name() + " = ", partition.loader(), args));
+            statements.add(call((partition.isReadCount() ? "ReadCountData " : "Alignment ")
+                    + partition.name() + " = ", partition.loader(), args));
         }
         if (statements.isEmpty()) {
             statements.add("// No alignment loaded — add one in the Partitions tab.");
@@ -252,6 +280,10 @@ public final class ScriptWriter {
     // --------------------------------------------------------------- model
 
     private List<String> modelStatements() {
+        if (analysis.isReadCount() && (analysis.partitions().size() != 1
+                || !analysis.partitions().getFirst().isReadCount())) {
+            throw new IllegalStateException("ReadCountModel currently requires one read-count partition in this UI.");
+        }
         List<String> statements = new ArrayList<>();
         declared.clear();
 
@@ -300,7 +332,16 @@ public final class ScriptWriter {
 
         for (Partition partition : analysis.partitions()) {
             statements.add("");
+            if ("PhyloCTMC".equals(analysis.likelihood().name()) && partition.siteModel().mutationRate() != null) {
+                declarations(List.of(partition.siteModel().mutationRate()), slotFor(partition), statements);
+            }
             statements.add(observation(partition));
+        }
+        for (Param vector : analysis.sharedVectors()) {
+            if (!writtenParams.contains(vector)) {
+                throw new IllegalStateException("Shared vector " + vector.name()
+                        + " is not used. Reference an element from a model input or remove the vector in Priors.");
+            }
         }
         return statements;
     }
@@ -400,7 +441,35 @@ public final class ScriptWriter {
         for (Param param : params) {
             // An argument left out of the call would leave its prior declared but unused.
             if (!param.includeProperty().get()) continue;
+            declaration(param, slot, statements);
+        }
+    }
+
+    private void declaration(Param param, Slot slot, List<String> statements) {
+        if (writtenParams.contains(param)) return;
+        if (!visiting.add(param)) {
+            throw new IllegalStateException("Cyclic parameter reference involving " + param.variableProperty().get() + ".");
+        }
+        try {
+            Param target = param.referenceProperty().get();
+            if (target != null) {
+                if (!param.validReference(analysis.library(), analysis.support())) {
+                    throw new IllegalStateException("Invalid parameter reference for " + param.name() + " : " + param.type());
+                }
+                if (!estimated.contains(target) && !componentVectors.contains(target)) {
+                    throw new IllegalStateException("Referenced parameter " + target.variableProperty().get()
+                            + " is no longer estimated or an editable component vector in this analysis. Select another reference or a literal value.");
+                }
+                declaration(target, slot.forPrior(), statements);
+                return;
+            }
             if (!param.isEstimated()) declarations(param.elements(), slot, statements);
+            if (param.hasComponentElements()) {
+                statements.add(declared(param.type()) + " " + param.variableProperty().get() + " = "
+                        + param.elements().stream().map(entry -> valueOf(entry, slot))
+                                .collect(Collectors.joining(", ", "[", "]")));
+                return;
+            }
             Component nested = param.priorProperty().get();
             if (nested != null && !param.isEstimated()) {
                 declarations(nested, slot, statements);
@@ -408,20 +477,23 @@ public final class ScriptWriter {
                     statements.add(call(declared(param.type()) + " "
                             + param.variableProperty().get() + " = ", nested.name(), argsOf(nested, slot)));
                 }
-                continue;
+                return;
             }
-            if (!param.isEstimated()) continue;
+            if (!param.isEstimated()) return;
             String variable = param.variableProperty().get();
             if (nested == null || nested.generator() == null) {
                 statements.add("// " + variable + " is estimated but has no prior — set one in the Priors tab.");
-                continue;
+                return;
             }
             // What the prior is built from is declared before the draw that uses it: a species
             // tree's Yule takes a taxon set that is itself a call, and that call needs a name.
             Slot priorSlot = param.isClockRates() ? slot : slot.forPrior();
             declarations(nested, priorSlot, statements);
-            statements.add(call(declared(param.type()) + " " + variable + " ~ ",
+            statements.add(call(declared(param.valueType()) + " " + variable + " ~ ",
                     nested.name(), argsOf(nested, priorSlot)));
+        } finally {
+            visiting.remove(param);
+            writtenParams.add(param);
         }
     }
 
@@ -451,6 +523,18 @@ public final class ScriptWriter {
         Slot slot = slotFor(partition);
         List<String> args = argsOf(likelihood, slot);
         if (analysis.isClockMixture()) args.add(0, "components=" + clockMixture(partition, slot));
+        if (analysis.isLatentObservation()) {
+            String latent = unique(partition.name() + "Latent");
+            List<String> phyloArgs = new ArrayList<>();
+            for (String name : List.of("tree", "qMatrix", "siteRates", "branchRates")) {
+                String value = wiring(name, slot);
+                if (value != null) phyloArgs.add(name + "=" + value);
+            }
+            args.add("alignment=" + latent);
+            return call("Alignment<Character> " + latent + " ~ ", "PhyloCTMC", phyloArgs) + "\n"
+                    + call(type + " " + variable + " ~ ", likelihood.name(), args)
+                    + " observed as " + partition.name();
+        }
         return call(type + " " + variable + " ~ ", likelihood.name(), args)
                 + " observed as " + partition.name();
     }
@@ -495,6 +579,12 @@ public final class ScriptWriter {
     private List<String> argsOf(Component component, Slot slot) {
         List<String> args = new ArrayList<>();
         for (org.phylospec.components.Argument argument : component.generator().getArguments()) {
+            if (component == analysis.likelihood() && "PhyloCTMC".equals(component.name())
+                    && "mutationRate".equals(argument.getName())) {
+                Param rate = slot.data() == null ? null : slot.data().siteModel().mutationRate();
+                if (rate != null && rate.includeProperty().get()) args.add("mutationRate=" + valueOf(rate, slot));
+                continue;
+            }
             String wired = wiring(argument.getName(), slot);
             if (wired != null) {
                 args.add(argument.getName() + "=" + wired);
@@ -513,8 +603,10 @@ public final class ScriptWriter {
         String data = slot.data() == null ? "data" : slot.data().name();
         return switch (argument) {
             case "tree" -> slot.tree() == null ? null : slot.tree().name();
-            case "taxa" -> "taxa(" + data + ")";
-            case "numSites" -> "numSites(" + data + ")";
+            case "taxa" -> slot.data() != null && slot.data().isReadCount()
+                    ? "readCountTaxa(counts=" + data + ")" : "taxa(" + data + ")";
+            case "numSites" -> slot.data() != null && slot.data().isReadCount()
+                    ? "readCountNumSites(counts=" + data + ")" : "numSites(" + data + ")";
             // A structural variable only exists if the tab that declares it chose a component. An
             // optional argument whose variable was never declared is left out of the call.
             case "qMatrix" -> slot.qMatrix();
@@ -525,7 +617,13 @@ public final class ScriptWriter {
     }
 
     private String valueOf(Param param, Slot slot) {
+        if (param.referenceProperty().get() != null) {
+            int index = param.referenceIndexProperty().get();
+            return param.referenceProperty().get().variableProperty().get()
+                    + (index == 0 ? "" : "[" + index + "]");
+        }
         if (param.isEstimated()) return param.variableProperty().get();
+        if (param.hasComponentElements()) return param.variableProperty().get();
         if (!param.elements().isEmpty()) {
             return param.elements().stream().map(entry -> valueOf(entry, slot))
                     .collect(Collectors.joining(", ", "[", "]"));

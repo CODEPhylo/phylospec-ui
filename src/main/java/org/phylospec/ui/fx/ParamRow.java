@@ -12,6 +12,8 @@ import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.ListCell;
+import javafx.scene.control.MenuButton;
+import javafx.scene.control.MenuItem;
 import javafx.scene.control.TextField;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
@@ -94,11 +96,78 @@ public final class ParamRow {
             return partitionList(analysis, param);
         }
         Library library = analysis.library();
-        if (param.canEditElements()) return vectorEditor(analysis, param);
+        if (param.canEditComponents()) {
+            return referenceEditor(analysis, param, vectorEditor(analysis, param));
+        }
+        if (param.canEditElements()) {
+            Node vector = vectorEditor(analysis, param);
+            return param.canReference(analysis.support()) ? referenceEditor(analysis, param, vector) : vector;
+        }
         return param.isComponentValued()
                 ? componentEditor(analysis, candidatesFor(library, param), param.priorProperty(),
                         chosen -> param.nestedChoice(chosen, library, analysis.support()))
-                : valueField(param);
+                : param.canReference(analysis.support()) ? referenceEditor(analysis, param, valueField(param)) : valueField(param);
+    }
+
+    private static Node referenceEditor(Analysis analysis, Param param, Node literal) {
+        Label selected = new Label();
+        MenuButton choices = new MenuButton("Reference…");
+        choices.setUserData(param);
+        TextField index = new TextField(Integer.toString(param.referenceIndexProperty().get()));
+        index.setPrefColumnCount(3);
+        index.setAccessibleText("Vector index for " + param.name());
+        index.setUserData(param);
+        index.textProperty().addListener((observable, old, now) -> {
+            try {
+                int value = Integer.parseInt(now.trim());
+                param.referenceIndexProperty().set(value > 0 ? value : -1);
+            } catch (NumberFormatException e) {
+                param.referenceIndexProperty().set(-1);
+            }
+        });
+        Runnable refresh = () -> {
+            Param target = param.referenceProperty().get();
+            selected.textProperty().unbind();
+            if (target != null) selected.textProperty().bind(target.variableProperty());
+            literal.setVisible(target == null);
+            literal.setManaged(target == null);
+            selected.setVisible(target != null);
+            selected.setManaged(target != null);
+            boolean indexed = target != null && param.referenceIndexProperty().get() != 0;
+            index.setVisible(indexed);
+            index.setManaged(indexed);
+        };
+        param.referenceProperty().addListener((observable, old, now) -> refresh.run());
+        param.referenceIndexProperty().addListener((observable, old, now) -> {
+            if (now.intValue() > 0) index.setText(now.toString());
+            refresh.run();
+        });
+        choices.setOnShowing(event -> {
+            choices.getItems().clear();
+            MenuItem fixed = new MenuItem("Use literal value");
+            fixed.setOnAction(action -> param.referenceProperty().set(null));
+            choices.getItems().add(fixed);
+            List<Param> candidates = new ArrayList<>(analysis.estimatedParams());
+            candidates.addAll(analysis.componentVectors());
+            for (Param candidate : candidates) {
+                if (candidate == param) continue;
+                boolean whole = analysis.library().isSubtype(candidate.valueType(), param.type());
+                boolean element = "Vector".equals(Library.head(candidate.valueType()))
+                        && analysis.library().isSubtype(Library.element(candidate.valueType()), param.type());
+                if (!whole && !element) continue;
+                MenuItem item = new MenuItem(candidate.variableProperty().get()
+                        + (whole ? "" : "[index]") + " : " + candidate.valueType());
+                item.setUserData(candidate);
+                item.setOnAction(action -> {
+                    param.estimateProperty().set(false);
+                    param.referenceProperty().set(candidate);
+                    param.referenceIndexProperty().set(whole ? 0 : 1);
+                });
+                choices.getItems().add(item);
+            }
+        });
+        refresh.run();
+        return new HBox(6, literal, selected, index, choices);
     }
 
     /** One of the loaded alignments, by name. */
@@ -183,7 +252,7 @@ public final class ParamRow {
                     Label error = new Label();
                     edit.setOnAction(event -> {
                         try {
-                            param.editElements(analysis.library());
+                            param.editElements(analysis.library(), analysis.support());
                             run();
                         } catch (IllegalArgumentException failure) {
                             error.setText(failure.getMessage());
@@ -196,7 +265,7 @@ public final class ParamRow {
                     Button add = new Button("+");
                     Button remove = new Button("−");
                     add.setOnAction(event -> {
-                        param.addElement("1.0", analysis.library());
+                        param.addElement("1.0", analysis.library(), analysis.support());
                         run();
                     });
                     remove.setDisable(param.elements().size() == 1);

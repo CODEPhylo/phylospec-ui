@@ -69,6 +69,7 @@ public final class Partition {
     private final StringProperty file = new SimpleStringProperty();
     private final IntegerProperty taxa = new SimpleIntegerProperty();
     private final IntegerProperty sites = new SimpleIntegerProperty();
+    private final boolean readCounts;
 
     private final BooleanProperty useTipDates = new SimpleBooleanProperty(false);
     private final javafx.beans.property.ObjectProperty<DateKind> dateKind =
@@ -104,13 +105,17 @@ public final class Partition {
         Summary summary = summarise(path);
         this.taxa.set(summary.taxa());
         this.sites.set(summary.sites());
+        this.readCounts = summary.readCounts();
     }
 
     /** The loader function this file needs, chosen from the extension. */
     public String loader() {
+        if (readCounts) return "fromReadCountNexus";
         String lower = file.get() == null ? "" : file.get().toLowerCase();
-        return lower.endsWith(".nex") || lower.endsWith(".nexus") ? "fromNexus" : "fromFasta";
+        return lower.endsWith(".nex") || lower.endsWith(".nexus") || lower.endsWith(".nxs") ? "fromNexus" : "fromFasta";
     }
+
+    public boolean isReadCount() { return readCounts; }
 
     /**
      * Turns a file name into a camelCase variable name, as PhyloSpec's naming conventions ask for.
@@ -129,7 +134,7 @@ public final class Partition {
         return cleaned.substring(0, Math.max(acronym, 1)).toLowerCase() + cleaned.substring(Math.max(acronym, 1));
     }
 
-    private record Summary(int taxa, int sites) {}
+    private record Summary(int taxa, int sites, boolean readCounts) {}
 
     /**
      * Reads just enough of the file to fill the Partitions table. A failure here is not worth
@@ -139,17 +144,30 @@ public final class Partition {
         try {
             List<String> lines = Files.readAllLines(path, StandardCharsets.UTF_8);
             String lower = path.getFileName().toString().toLowerCase();
-            return lower.endsWith(".nex") || lower.endsWith(".nexus")
+            return lower.endsWith(".nex") || lower.endsWith(".nexus") || lower.endsWith(".nxs")
                     ? summariseNexus(lines)
                     : summariseFasta(lines);
         } catch (IOException | RuntimeException e) {
-            return new Summary(0, 0);
+            return new Summary(0, 0, false);
         }
     }
 
     private static Summary summariseNexus(List<String> lines) {
         String text = String.join("\n", lines);
-        return new Summary(match(text, "ntax\\s*=\\s*(\\d+)"), match(text, "nchar\\s*=\\s*(\\d+)"));
+        boolean counts = Pattern.compile("\\bdatatype\\s*=\\s*readCount\\b", Pattern.CASE_INSENSITIVE)
+                .matcher(text.replaceAll("(?s)\\[[^]]*]", "")).find();
+        if (counts) {
+            // The read-count loader consumes matrix rows, not ntax/nchar declarations.
+            // This is only a summary; validation of count values remains in the backend.
+            Matcher matrix = Pattern.compile("(?ims)^\\s*matrix\\b[ \\t]*(.*?);").matcher(text);
+            if (!matrix.find()) return new Summary(0, 0, true);
+            List<String> rows = matrix.group(1).lines().map(String::strip)
+                    .filter(line -> !line.isEmpty() && !line.startsWith("#")).toList();
+            String[] first = rows.isEmpty() ? new String[0] : rows.getFirst().split("\\s+", 2);
+            int sites = first.length == 2 ? first[1].split(",", -1).length : 0;
+            return new Summary(rows.size(), sites, true);
+        }
+        return new Summary(match(text, "ntax\\s*=\\s*(\\d+)"), match(text, "nchar\\s*=\\s*(\\d+)"), false);
     }
 
     private static int match(String text, String pattern) {
@@ -169,7 +187,7 @@ public final class Partition {
                 sites += line.trim().length();
             }
         }
-        return new Summary(taxa, sites);
+        return new Summary(taxa, sites, false);
     }
 
     public StringProperty nameProperty() {

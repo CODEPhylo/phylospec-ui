@@ -110,12 +110,19 @@ class EngineLibraryTest {
         assertEquals(List.of("StrictClock", "RelaxedClock"), names(analysis, Library.CLOCK_MODEL));
         assertEquals(List.of("DiscreteGammaInv"), names(analysis, Library.SITE_RATES));
         assertEquals(
-                List.of("Yule", "BirthDeath", "Coalescent", "SkylineCoalescent", "FossilizedBirthDeath"),
+                List.of("Yule", "BirthDeath", "Coalescent", "SkylineCoalescent", "FossilizedBirthDeath", "BayesianSkyline"),
                 names(analysis, Library.TREE_PRIOR));
         assertTrue(names(analysis, Library.SUBSTITUTION_MODEL).containsAll(Analysis.SUBSTITUTION_MODELS));
         assertEquals(List.of("PhyloCTMC", "PhyloBM", "PhyloOU"),
                 core.withRole(Library.TREE_LIKELIHOOD, List.of()).stream()
                         .map(Generator::getName).distinct().toList());
+    }
+
+    @Test
+    void weightedDirichletIsAVectorPriorNotASiteModel() {
+        Generator weighted = core.overloads("WeightedDirichlet").getFirst();
+        assertEquals(null, core.roleOf(weighted));
+        assertTrue(core.priorsFor("Vector<PositiveReal>").contains(weighted));
     }
 
     @Test

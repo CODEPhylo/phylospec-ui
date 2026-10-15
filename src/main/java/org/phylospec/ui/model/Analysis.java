@@ -2,6 +2,8 @@ package org.phylospec.ui.model;
 
 import java.util.List;
 import java.util.Map;
+import java.util.LinkedHashSet;
+import java.util.Set;
 
 import javafx.beans.property.SimpleStringProperty;
 import javafx.beans.property.StringProperty;
@@ -39,6 +41,7 @@ public final class Analysis {
     private final EngineSupport support;
 
     private final ObservableList<Partition> partitions = FXCollections.observableArrayList();
+    private final ObservableList<Param> sharedVectors = FXCollections.observableArrayList();
 
     // The model groups. A group serves every partition pointing at it, so "linked" is one object
     // with several referrers and "unlinked" is a copy of its own. One of each to begin with, which
@@ -78,6 +81,11 @@ public final class Analysis {
                 for (Component clock : clockModels) {
                     if (!isSharedRatesClock(clock.generator())) select(clock, "sharedRatesClock");
                 }
+            }
+            if (isReadCount() && partitions.size() == 1 && partitions.getFirst().taxaProperty().get() > 0) {
+                Param factors = likelihood.param("s");
+                factors.estimateProperty().set(false);
+                factors.resizeTo(partitions.getFirst().taxaProperty().get());
             }
         });
 
@@ -134,6 +142,7 @@ public final class Analysis {
         if (partitions.stream().anyMatch(p -> p.fileProperty().get().equals(path.toString()))) return;
 
         Partition partition = new Partition(path);
+        requireSupportedLoader(partition);
         String preferred = partition.name();
         String name = preferred;
         for (int suffix = 2; isNameTaken(name); suffix++) {
@@ -141,6 +150,34 @@ public final class Analysis {
         }
         partition.nameProperty().set(name);
         partitions.add(partition);
+    }
+
+    /** Validate before adding a partition, and again before exporting an edited analysis. */
+    public void requireSupportedLoader(Partition partition) {
+        if (partition.isReadCount() && (partition.useTipDatesProperty().get() || partition.useSpeciesProperty().get())) {
+            throw new IllegalStateException("Read-count input currently supports undated taxa without species parsing.");
+        }
+        Set<String> arguments = new LinkedHashSet<>(List.of("file"));
+        if (partition.useTipDatesProperty().get()) arguments.add(partition.dateKindProperty().get().argument());
+        if (partition.useSpeciesProperty().get()) arguments.add("speciesName");
+
+        String loader = partition.loader();
+        boolean declared = library.overloads(loader).stream().anyMatch(generator -> {
+            List<String> names = generator.getArguments().stream().map(Argument::getName).toList();
+            return names.containsAll(arguments) && generator.getArguments().stream()
+                    .filter(argument -> Boolean.TRUE.equals(argument.getRequired()))
+                    .allMatch(argument -> arguments.contains(argument.getName()));
+        });
+        if (!declared) {
+            throw new IllegalStateException("The loaded component libraries do not declare " + loader
+                    + "(" + String.join(", ", arguments) + ") for " + partition.fileProperty().get() + ".");
+        }
+        EngineSupport.Verdict verdict = support.verdictForCall(loader, arguments);
+        if (!verdict.supported()) {
+            throw new IllegalStateException("Cannot load " + partition.fileProperty().get() + ": "
+                    + verdict.reason() + " Load an adapter that supports this input, or use a data format "
+                    + "supported by the loaded engines. No file conversion has been performed.");
+        }
     }
 
     private boolean isNameTaken(String name) {
@@ -164,6 +201,10 @@ public final class Analysis {
      * they model continuous traits, and no alignment loader produces those.
      */
     private List<Generator> observableAsTheData(List<Generator> candidates) {
+        if (partitions.stream().anyMatch(Partition::isReadCount)) {
+            if (partitions.stream().anyMatch(p -> !p.isReadCount())) return List.of();
+            return candidates.stream().filter(Analysis::isReadCount).toList();
+        }
         String observed = elementOfTheData();
         if (observed == null) return candidates;
         return candidates.stream()
@@ -189,7 +230,38 @@ public final class Analysis {
         for (Component component : components()) {
             collectEstimated(component, estimated);
         }
+        collectEstimated(extraParams(), estimated);
         return estimated;
+    }
+
+    /** Vector draws used by several scalar inputs, owned once at analysis level. */
+    public ObservableList<Param> sharedVectors() { return sharedVectors; }
+
+    public Param addSharedVector(String name, String type) {
+        if (name == null || !name.matches("[A-Za-z_][A-Za-z0-9_]*")
+                || sharedVectors.stream().anyMatch(param -> param.name().equals(name))) {
+            throw new IllegalArgumentException("Choose a unique vector name using letters, digits and underscores, not starting with a digit.");
+        }
+        if (!"Vector".equals(Library.head(type)) || !library.isSubtype(Library.element(type), "Real")) {
+            throw new IllegalArgumentException("Shared parameters must be numeric vectors.");
+        }
+        Argument argument = new Argument();
+        argument.setName(name);
+        argument.setType(type);
+        argument.setRequired(true);
+        Param param = new Param(argument, true, library);
+        param.estimateProperty().set(true);
+        sharedVectors.add(param);
+        return param;
+    }
+
+    /** Parameters outside a component, still using the ordinary prior/reference machinery. */
+    public List<Param> extraParams() {
+        List<Param> params = new java.util.ArrayList<>(sharedVectors);
+        if ("PhyloCTMC".equals(likelihood.name())) {
+            for (SiteModel model : siteModels) if (model.mutationRate() != null) params.add(model.mutationRate());
+        }
+        return params;
     }
 
     private static void collectEstimated(Component component, List<Param> into) {
@@ -199,7 +271,7 @@ public final class Analysis {
     private static void collectEstimated(List<Param> params, List<Param> into) {
         for (Param param : params) {
             // An argument left out of the call is not part of the model, so it gets no prior.
-            if (!param.includeProperty().get()) continue;
+            if (!param.includeProperty().get() || param.referenceProperty().get() != null) continue;
             if (!param.isEstimated()) collectEstimated(param.elements(), into);
             Component nested = param.priorProperty().get();
             // A nested function's own arguments may be estimated; a prior's hyperparameters cannot.
@@ -207,6 +279,25 @@ public final class Analysis {
                 collectEstimated(nested, into);
             }
             if (param.isEstimated()) into.add(param);
+        }
+    }
+
+    /** Owned component vectors may be shared with a prior without duplicating their entries. */
+    public List<Param> componentVectors() {
+        List<Param> found = new java.util.ArrayList<>();
+        for (Component component : components()) collectComponentVectors(component.params(), found);
+        return found;
+    }
+
+    private static void collectComponentVectors(List<Param> params, List<Param> into) {
+        for (Param param : params) {
+            if (!param.includeProperty().get() || param.referenceProperty().get() != null) continue;
+            if (param.hasComponentElements()) into.add(param);
+            collectComponentVectors(param.elements(), into);
+            Component nested = param.priorProperty().get();
+            if (nested != null && (!param.isEstimated() || param.isClockRates())) {
+                collectComponentVectors(nested.params(), into);
+            }
         }
     }
 
@@ -273,6 +364,7 @@ public final class Analysis {
         SiteModel copy = new SiteModel(library, support);
         Component.copy(partition.siteModel().substitutionModel(), copy.substitutionModel());
         Component.copy(partition.siteModel().siteRates(), copy.siteRates());
+        partition.siteModel().copyRateTo(copy, library);
         siteModels.add(copy);
         partition.siteModelProperty().set(copy);
         discardUnusedSiteModels();
@@ -452,7 +544,8 @@ public final class Analysis {
         Generator chosen = likelihood.generator();
         if (chosen == null) return null;
         // The clock-mixture preset's children, not its parent, consume these model slots.
-        if (isClockMixture() && List.of("tree", "qMatrix", "siteRates", "branchRates").contains(argument)) {
+        if ((isClockMixture() || isLatentObservation())
+                && List.of("tree", "qMatrix", "siteRates", "branchRates").contains(argument)) {
             chosen = library.overloads("PhyloCTMC").getFirst();
         }
         return chosen.getArguments().stream()
@@ -465,6 +558,25 @@ public final class Analysis {
     public boolean isClockMixture() {
         return isClockMixture(likelihood.generator());
     }
+
+    /** Explicit GT16 observation composition; an arbitrary Alignment input need not be latent. */
+    public boolean isGenotypeError() {
+        return isGenotypeError(likelihood.generator());
+    }
+
+    public static boolean isGenotypeError(Generator generator) {
+        return generator != null && "GT16ErrorModel".equals(generator.getName())
+                && "phylonco.distributions.alignment".equals(generator.getNamespace());
+    }
+
+    public boolean isReadCount() { return isReadCount(likelihood.generator()); }
+
+    public static boolean isReadCount(Generator generator) {
+        return generator != null && "ReadCountModel".equals(generator.getName())
+                && "phylonco.distributions.readcount".equals(generator.getNamespace());
+    }
+
+    public boolean isLatentObservation() { return isGenotypeError() || isReadCount(); }
 
     public static boolean isClockMixture(Generator generator) {
         return generator != null && "alignmentMixture".equals(generator.getName())

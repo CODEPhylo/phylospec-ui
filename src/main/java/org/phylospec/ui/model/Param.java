@@ -8,8 +8,10 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 import javafx.beans.property.BooleanProperty;
+import javafx.beans.property.IntegerProperty;
 import javafx.beans.property.ObjectProperty;
 import javafx.beans.property.SimpleBooleanProperty;
+import javafx.beans.property.SimpleIntegerProperty;
 import javafx.beans.property.SimpleObjectProperty;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.beans.property.StringProperty;
@@ -23,9 +25,9 @@ import org.phylospec.ui.spec.Library;
 /**
  * One argument of a chosen component, as the user is editing it.
  *
- * <p>A param is either <em>fixed</em> — written into the script as a literal — or <em>estimated</em>,
- * in which case it becomes a random variable with a prior. This single distinction replaces BEAUti's
- * separate editor class per input type.
+ * <p>A param is fixed or estimated, in which case it owns a random variable and its prior.
+ * A scalar input can instead reference an existing estimated param without another draw.
+ * A component-vector input can own editable entries or reference an existing vector.
  */
 public final class Param {
 
@@ -36,6 +38,7 @@ public final class Param {
     private final boolean estimable;
     private final boolean elementsEstimable;
     private final List<Param> elements = new ArrayList<>();
+    private final boolean componentVector;
     private final boolean indicator;
     private final Integer dimension;
 
@@ -52,6 +55,11 @@ public final class Param {
     private final BooleanProperty estimate = new SimpleBooleanProperty(false);
     private final BooleanProperty include = new SimpleBooleanProperty(true);
     private final ObjectProperty<Component> prior = new SimpleObjectProperty<>();
+    private final ObjectProperty<Param> reference = new SimpleObjectProperty<>();
+    // Zero references the whole value; positive indices use PhyloSpec's 1-based indexing.
+    private final IntegerProperty referenceIndex = new SimpleIntegerProperty(0);
+    private Generator referenceOwner;
+    private String drawType;
 
     /** Set when this argument has to be built by calling something rather than typed in. */
     private boolean nested;
@@ -97,6 +105,10 @@ public final class Param {
         this.indicator = isIndicator(argument);
         this.dimension = constrainedLength != null ? constrainedLength : fixedDimension(argument);
         this.dimensionExpression = declaredExpression(argument, library);
+        this.componentVector = library != null && "Vector".equals(Library.head(type))
+                && !numeric(Library.element(type)) && !"Alignment".equals(Library.head(Library.element(type)))
+                && dimension == null && dimensionExpression == null && Library.property(type, "num") == null
+                && !library.producing(Library.element(type)).isEmpty();
         this.elementsEstimable = estimable;
         this.estimable = estimable && (indicator
                 || isEstimatableType(type, library));
@@ -104,6 +116,12 @@ public final class Param {
         this.estimate.set(this.estimable && this.required
                 && (!"Vector".equals(Library.head(type)) || dimension != null || dimensionExpression != null));
         this.variable.set(name);
+        this.estimate.addListener((observable, was, now) -> {
+            if (now) reference.set(null);
+        });
+        this.reference.addListener((observable, was, now) -> {
+            if (now == null) referenceIndex.set(0);
+        });
         this.include.set(this.required || argument.getDefault() != null);
     }
 
@@ -342,7 +360,7 @@ public final class Param {
 
     /** The type a prior on this param must support. */
     public String priorSupport() {
-        return isDistributionValued() ? Library.inner(type) : type;
+        return isDistributionValued() ? Library.inner(type) : valueType();
     }
 
     public String name() {
@@ -351,6 +369,20 @@ public final class Param {
 
     public String type() {
         return type;
+    }
+
+    /** A sampled scalar can have a narrower declared type than the argument accepting it. */
+    public String valueType() {
+        return isEstimated() && drawType != null ? drawType : type;
+    }
+
+    public void setDrawType(String declared, Library library) {
+        if (!numeric(declared) || declared.contains("<")) return;
+        if (!library.isSubtype(declared, type)) {
+            throw new IllegalArgumentException("Draw type " + declared + " cannot be used for " + name + " : " + type);
+        }
+        // Keep the established spelling for equivalent aliases (e.g. Rate/PositiveReal).
+        drawType = library.isSubtype(type, declared) ? null : declared;
     }
 
     public String description() {
@@ -406,18 +438,74 @@ public final class Param {
         return prior;
     }
 
+    /** An input can reference an existing compatible value, or a numeric vector element. */
+    public ObjectProperty<Param> referenceProperty() {
+        return reference;
+    }
+
+    public IntegerProperty referenceIndexProperty() { return referenceIndex; }
+
+    public boolean validReference(Library library, EngineSupport support) {
+        Param target = reference.get();
+        if (target == null || !canReference(support)) return false;
+        int index = referenceIndex.get();
+        if (index == 0) return library.isSubtype(target.valueType(), type);
+        if (index < 1 || !"Vector".equals(Library.head(target.valueType()))) return false;
+        Integer length = target.vectorLength();
+        return (length == null || index <= length)
+                && library.isSubtype(Library.element(target.valueType()), type);
+    }
+
+    /** Known dimensions of the supported numeric priors; unknown lengths remain backend-checked. */
+    public Integer vectorLength() {
+        if (dimension != null) return dimension;
+        Component law = prior.get();
+        if (law == null) return null;
+        if ("IID".equals(law.name()) && law.param("num") != null) {
+            return positive(law.param("num").valueProperty().get());
+        }
+        if ("WeightedDirichlet".equals(law.name()) && law.param("concentration") != null) {
+            Param concentration = law.param("concentration");
+            if (!concentration.elements().isEmpty()) return concentration.elements().size();
+            try { return concentration.numericLiterals().length; }
+            catch (IllegalArgumentException ignored) { return null; }
+        }
+        return null;
+    }
+
+    void allowReference(Generator owner) {
+        if (componentVector || indicator || ("Vector".equals(Library.head(type)) && numeric(Library.element(type)))
+                || switch (Library.head(type)) {
+            case "Real", "PositiveReal", "Rate", "NonNegativeReal", "Age", "Probability", "Simplex" -> true;
+            default -> false;
+        }) referenceOwner = owner;
+    }
+
+    public boolean canReference(EngineSupport support) {
+        return referenceOwner != null
+                && (componentVector || !Boolean.FALSE.equals(support.canBeStochastic(referenceOwner, name)));
+    }
+
     public StringProperty variableProperty() {
         return variable;
     }
 
     public boolean isEstimated() {
-        return estimate.get() && estimable;
+        return reference.get() == null && estimate.get() && estimable;
     }
 
     /** Numeric entries use the ordinary scalar editor and priors; no extra vector state is made. */
     public boolean canEditElements() {
         return "Vector".equals(Library.head(type)) && numeric(Library.element(type))
                 && dimension == null && dimensionExpression == null && Library.property(type, "num") == null;
+    }
+
+    public boolean canEditComponents() {
+        return componentVector;
+    }
+
+    public boolean hasComponentElements() {
+        return componentVector && !elements.isEmpty() && reference.get() == null;
     }
 
     public List<Param> elements() {
@@ -429,7 +517,11 @@ public final class Param {
     }
 
     public Param addElement(String literal, Library library) {
-        if (!canEditElements()) throw new IllegalStateException("This parameter has no editable numeric entries.");
+        return addElement(literal, library, EngineSupport.unclaimed());
+    }
+
+    public Param addElement(String literal, Library library, EngineSupport support) {
+        if (!canEditElements() && !componentVector) throw new IllegalStateException("This parameter has no editable entries.");
         Argument argument = new Argument();
         argument.setName(name + (elements.size() + 1));
         argument.setType(Library.element(type));
@@ -437,6 +529,12 @@ public final class Param {
         Param entry = new Param(argument, elementsEstimable, library);
         entry.valueProperty().set(literal);
         entry.estimateProperty().set(false);
+        if (componentVector) {
+            entry.markNested(elementsEstimable);
+            library.producing(entry.type()).stream().filter(support::supports).findFirst().ifPresent(
+                    choice -> entry.priorProperty().set(Component.nested(
+                            choice, library, elementsEstimable, support, entry.type())));
+        }
         entry.estimateProperty().addListener((observable, was, now) -> {
             if (now && entry.priorProperty().get() == null) {
                 Generator choice = library.defaultPriorFor(entry.type());
@@ -449,7 +547,33 @@ public final class Param {
 
     /** Entering per-entry mode never discards an expression that we cannot safely interpret. */
     public void editElements(Library library) {
+        editElements(library, EngineSupport.unclaimed());
+    }
+
+    public void editElements(Library library, EngineSupport support) {
         if (!elements.isEmpty()) return;
+        if (componentVector) {
+            if (!value.get().isBlank() && !"[]".equals(value.get().trim())) {
+                throw new IllegalArgumentException("Import named component entries before editing this expression.");
+            }
+            addElement("", library, support);
+            return;
+        }
+        for (String entry : numericLiterals()) addElement(entry, library);
+    }
+
+    /** A default for a newly chosen prior, not a constraint or an edit to an existing prior. */
+    Integer initialVectorLength() {
+        if (!canEditElements()) return null;
+        if (!elements.isEmpty()) return elements.size();
+        try {
+            return numericLiterals().length;
+        } catch (IllegalArgumentException exception) {
+            return null;
+        }
+    }
+
+    private String[] numericLiterals() {
         String text = value.get().trim();
         if (!text.startsWith("[") || !text.endsWith("]")) {
             throw new IllegalArgumentException("Enter a numeric array such as [1.0, 2.0] first.");
@@ -462,7 +586,7 @@ public final class Param {
                 throw new IllegalArgumentException("Per-entry editing requires finite numeric literals.");
             }
         }
-        for (String entry : values) addElement(entry.trim(), library);
+        return java.util.Arrays.stream(values).map(String::trim).toArray(String[]::new);
     }
 
     public void removeLastElement() {

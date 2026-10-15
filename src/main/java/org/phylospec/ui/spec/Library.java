@@ -231,9 +231,11 @@ public final class Library {
         if ("Alignment".equals(kind)) return TREE_LIKELIHOOD;
         if (!"Vector".equals(kind) || !isSubtype(element(support), "Rate")) return null;
 
-        // A rate per branch is a clock, a rate per site is rate heterogeneity. Their generated types
-        // differ only in a type property, so it is the tree argument that tells the two apart.
-        return takesAnArgumentNamed(generator, "tree") ? CLOCK_MODEL : SITE_RATES;
+        // PositiveReal and Rate are compatible, but an arbitrary positive-vector prior is not
+        // necessarily a site model (e.g. partition-level WeightedDirichlet). Require an explicit
+        // structural input for inference; package metadata can still declare a role directly.
+        if (takesAnArgumentNamed(generator, "tree")) return CLOCK_MODEL;
+        return takesAnArgumentNamed(generator, "numSites") ? SITE_RATES : null;
     }
 
     /**

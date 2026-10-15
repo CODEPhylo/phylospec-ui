@@ -56,7 +56,14 @@ public final class EngineSupport {
      * the engine insists on must be something the library declares.
      */
     private static boolean covers(Generator__1 entry, Generator library) {
-        if (!entry.getName().equals(library.getName())) return false;
+        Set<String> declared = library.getArguments().stream()
+                .map(Argument::getName)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        return covers(entry, library.getName(), declared);
+    }
+
+    private static boolean covers(Generator__1 entry, String name, Set<String> arguments) {
+        if (!entry.getName().equals(name)) return false;
 
         Set<String> offered = new LinkedHashSet<>();
         Set<String> insisted = new LinkedHashSet<>();
@@ -65,11 +72,7 @@ public final class EngineSupport {
             if (Boolean.TRUE.equals(argument.getRequired())) insisted.add(argument.getName());
         }
 
-        Set<String> declared = library.getArguments().stream()
-                .map(Argument::getName)
-                .collect(Collectors.toCollection(LinkedHashSet::new));
-
-        return offered.containsAll(declared) && declared.containsAll(insisted);
+        return offered.containsAll(arguments) && arguments.containsAll(insisted);
     }
 
     /** Whether a component can be run, and by what, or why not. */
@@ -148,6 +151,19 @@ public final class EngineSupport {
     /** Shorthand for {@code verdictFor(generator).supported()}. */
     public boolean supports(Generator generator) {
         return verdictFor(generator).supported();
+    }
+
+    /** Checks an actual call, not optional arguments the caller has not used. */
+    public Verdict verdictForCall(String name, Set<String> arguments) {
+        if (specifications.isEmpty()) return Verdict.unclaimed();
+        for (Entry entry : implemented.getOrDefault(name, List.of())) {
+            if (covers(entry.generator(), name, arguments)) {
+                return new Verdict(true, describe(entry.specification()), null);
+            }
+        }
+        return new Verdict(false, null, name + "(" + String.join(", ", arguments)
+                + ") is not implemented by "
+                + specifications.stream().map(EngineSupport::describe).collect(Collectors.joining(" or ")) + ".");
     }
 
     /**

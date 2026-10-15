@@ -1,7 +1,7 @@
 package org.phylospec.ui.panel;
 
 import java.io.File;
-import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 
 import javafx.beans.binding.Bindings;
@@ -11,6 +11,7 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
+import javafx.scene.control.Alert;
 import javafx.scene.control.ChoiceBox;
 import javafx.scene.control.SelectionMode;
 import javafx.scene.control.Separator;
@@ -32,7 +33,7 @@ import org.phylospec.ui.model.Partition;
 /** The Partitions tab: the alignments the analysis is built on. */
 public final class PartitionsPanel {
 
-    private static final List<String> EXTENSIONS = List.of("*.nex", "*.nexus", "*.fa", "*.fasta", "*.fst");
+    private static final List<String> EXTENSIONS = List.of("*.nex", "*.nexus", "*.nxs", "*.fa", "*.fasta", "*.fst");
 
     private PartitionsPanel() {}
 
@@ -238,7 +239,27 @@ public final class PartitionsPanel {
                 new FileChooser.ExtensionFilter("Alignments", EXTENSIONS),
                 new FileChooser.ExtensionFilter("All files", "*.*"));
         List<File> chosen = chooser.showOpenMultipleDialog(owner);
-        if (chosen != null) chosen.forEach(file -> analysis.addPartition(file.toPath()));
+        if (chosen != null) addFiles(owner, analysis, chosen);
+    }
+
+    /** Shared by the file chooser, drag-and-drop and command-line alignment arguments. */
+    public static boolean addFiles(Window owner, Analysis analysis, List<File> files) {
+        List<String> problems = new ArrayList<>();
+        for (File file : files) {
+            try {
+                analysis.addPartition(file.toPath());
+            } catch (IllegalStateException exception) {
+                problems.add(exception.getMessage());
+            }
+        }
+        if (problems.isEmpty()) return true;
+        Alert alert = new Alert(Alert.AlertType.ERROR,
+                "These files were not added; other supported files have been kept.\n\n"
+                        + String.join("\n\n", problems));
+        alert.setHeaderText("Unsupported data input");
+        if (owner != null) alert.initOwner(owner);
+        alert.showAndWait();
+        return false;
     }
 
     /** Dropping alignment files onto the table is how BEAUti expects them to arrive. */
@@ -249,8 +270,9 @@ public final class PartitionsPanel {
         });
         table.setOnDragDropped((DragEvent event) -> {
             boolean hasFiles = event.getDragboard().hasFiles();
-            if (hasFiles) event.getDragboard().getFiles().forEach(file -> analysis.addPartition(file.toPath()));
-            event.setDropCompleted(hasFiles);
+            boolean loaded = hasFiles && addFiles(table.getScene().getWindow(), analysis,
+                    event.getDragboard().getFiles());
+            event.setDropCompleted(loaded);
             event.consume();
         });
     }

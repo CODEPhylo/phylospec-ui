@@ -5,7 +5,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.ArrayList;
 import java.util.List;
 
 import javafx.animation.Animation;
@@ -86,7 +85,7 @@ public class PhyloSpecUI extends Application {
     public void start(Stage stage) {
         commandLine = CommandLine.parse(getParameters().getRaw());
         analysis = createAnalysis(commandLine);
-        loadAlignmentsNamedOnTheCommandLine();
+        loadAlignmentsNamedOnTheCommandLine(stage);
 
         TabPane tabs = buildTabs();
         scriptPane = buildScriptPane();
@@ -129,11 +128,10 @@ public class PhyloSpecUI extends Application {
     }
 
     /** Alignments can be named on the command line, the way BEAUti accepts them. */
-    private void loadAlignmentsNamedOnTheCommandLine() {
-        for (String argument : commandLine.alignments()) {
-            Path path = Path.of(argument);
-            if (Files.isRegularFile(path)) analysis.addPartition(path);
-        }
+    private void loadAlignmentsNamedOnTheCommandLine(Stage owner) {
+        List<File> files = commandLine.alignments().stream().map(Path::of)
+                .filter(Files::isRegularFile).map(Path::toFile).toList();
+        PartitionsPanel.addFiles(owner, analysis, files);
     }
 
     /**
@@ -268,34 +266,39 @@ public class PhyloSpecUI extends Application {
         boolean rates = analysis.likelihoodTakes("siteRates");
         boolean clock = analysis.likelihoodTakes("branchRates");
 
-        require(analysis.substitutionModel(), Library.SUBSTITUTION_MODEL, matrix);
-        require(analysis.siteRates(), Library.SITE_RATES, rates && analysis.likelihoodNeeds("siteRates"));
-        require(analysis.clockModel(), Library.CLOCK_MODEL, clock && analysis.likelihoodNeeds("branchRates"));
-        if (!rates) analysis.siteRates().generatorProperty().set(null);
-        if (!clock) analysis.clockModel().generatorProperty().set(null);
-
-        List<ComponentPanel.Choice> siteChoices = new ArrayList<>();
-        if (matrix) {
-            siteChoices.add(ComponentPanel.Choice.of("Substitution model",
-                    Library.SUBSTITUTION_MODEL, analysis.substitutionModel()));
+        for (var model : analysis.siteModels()) {
+            require(model.substitutionModel(), Library.SUBSTITUTION_MODEL, matrix);
+            require(model.siteRates(), Library.SITE_RATES, rates && analysis.likelihoodNeeds("siteRates"));
+            if (!matrix) model.substitutionModel().generatorProperty().set(null);
+            if (!rates) model.siteRates().generatorProperty().set(null);
         }
-        if (rates) {
-            siteChoices.add(new ComponentPanel.Choice("Site rates", Library.SITE_RATES,
-                    analysis.siteRates(), !analysis.likelihoodNeeds("siteRates")));
+        for (Component model : analysis.clockModels()) {
+            require(model, Library.CLOCK_MODEL, clock && analysis.likelihoodNeeds("branchRates"));
+            if (!clock) model.generatorProperty().set(null);
         }
-        if (!siteChoices.isEmpty()) {
+        if (matrix || rates) {
             siteModelTab.setContent(ComponentPanel.build(analysis,
-                    "The substitution process, shared by every partition.", siteChoices));
+                    "The substitution process for each group of partitions.", analysis.siteModels(), model -> model,
+                    (owner, model) -> "Site model for " + named(owner.partitionsUsing(model)), model -> {
+                        List<ComponentPanel.Choice> choices = new ArrayList<>();
+                        if (matrix) choices.add(ComponentPanel.Choice.of("Substitution model",
+                                Library.SUBSTITUTION_MODEL, model.substitutionModel()));
+                        if (rates) choices.add(new ComponentPanel.Choice("Site rates", Library.SITE_RATES,
+                                model.siteRates(), !analysis.likelihoodNeeds("siteRates")));
+                        return choices;
+                    }));
         }
         if (clock) {
             clockModelTab.setContent(ComponentPanel.build(analysis,
                     "How substitution rates vary along the branches of the tree.",
-                    List.of(new ComponentPanel.Choice("Clock model", Library.CLOCK_MODEL,
-                            analysis.clockModel(), !analysis.likelihoodNeeds("branchRates")))));
+                    analysis.clockModels(), model -> model,
+                    (owner, model) -> "Clock model for " + named(owner.partitionsUsing(model)),
+                    model -> List.of(new ComponentPanel.Choice("Clock model", Library.CLOCK_MODEL,
+                            model, !analysis.likelihoodNeeds("branchRates")))));
         }
 
         List<Tab> wanted = allTabs.stream()
-                .filter(tab -> (tab != siteModelTab || !siteChoices.isEmpty())
+                .filter(tab -> (tab != siteModelTab || matrix || rates)
                         && (tab != clockModelTab || clock))
                 .toList();
         if (wanted.equals(tabs.getTabs())) return;
@@ -392,7 +395,15 @@ public class PhyloSpecUI extends Application {
     /** Regenerates the script, and revalidates it whenever it has actually changed. */
     private void startRefreshing() {
         Timeline timeline = new Timeline(new KeyFrame(REFRESH, event -> {
-            String current = ScriptWriter.write(analysis);
+            String current;
+            try {
+                current = ScriptWriter.write(analysis);
+            } catch (IllegalStateException exception) {
+                lastScript = "";
+                script.clear();
+                report(new Validator.Report(List.of(exception.getMessage()), List.of()));
+                return;
+            }
             if (current.equals(lastScript)) return;
             lastScript = current;
             script.setText(current);
@@ -491,10 +502,10 @@ public class PhyloSpecUI extends Application {
             target = chosen.toPath();
         }
         try {
-            Files.writeString(target, script.getText());
+            Files.writeString(target, ScriptWriter.write(analysis));
             savedTo = target;
             stage.setTitle("PhyloSpec — " + target.getFileName());
-        } catch (IOException e) {
+        } catch (IOException | IllegalStateException e) {
             new Alert(Alert.AlertType.ERROR, "Could not save: " + e.getMessage()).showAndWait();
         }
     }

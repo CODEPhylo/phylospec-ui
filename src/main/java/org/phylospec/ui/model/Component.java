@@ -1,6 +1,7 @@
 package org.phylospec.ui.model;
 
 import java.util.List;
+import java.util.IdentityHashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -19,8 +20,8 @@ import org.phylospec.ui.spec.Library;
  * A chosen generator together with the params the user edits for it.
  *
  * <p>The same class backs the substitution model, the site rates, the clock model, the tree prior
- * and every prior distribution — a prior is simply a component whose arguments cannot themselves
- * be estimated.
+ * and every prior distribution. A prior's hyperparameters are fixed values or references to
+ * existing estimated scalars; they do not create additional random variables.
  */
 public final class Component {
 
@@ -76,7 +77,7 @@ public final class Component {
         return new Component(true, library, support, true);
     }
 
-    /** A prior: its hyperparameters are always fixed. */
+    /** A prior: hyperparameters have no independent estimate checkbox, but can reference a draw. */
     public static Component prior(Generator generator) {
         return prior(generator, null, null);
     }
@@ -145,24 +146,35 @@ public final class Component {
      * default would, and loses nothing.
      */
     public static void copy(Component from, Component to) {
+        Map<Param, Param> copied = new IdentityHashMap<>();
+        copy(from, to, copied);
+        // Internal links follow the copy. Links to a parameter outside this component stay shared.
+        copied.forEach((source, target) -> target.referenceProperty().set(
+                copied.getOrDefault(source.referenceProperty().get(), source.referenceProperty().get())));
+    }
+
+    private static void copy(Component from, Component to, Map<Param, Param> copied) {
         to.generator.set(from.generator());
         if (from.generator() == null) return;
 
         for (Param source : from.params()) {
             Param target = to.param(source.name());
             if (target == null) continue;
-            copyParam(source, target, to);
+            copyParam(source, target, to, copied);
         }
     }
 
-    private static void copyParam(Param source, Param target, Component owner) {
+    private static void copyParam(Param source, Param target, Component owner, Map<Param, Param> copied) {
+        copied.put(source, target);
         target.valueProperty().set(source.valueProperty().get());
+        target.referenceIndexProperty().set(source.referenceIndexProperty().get());
         target.includeProperty().set(source.includeProperty().get());
         // Ticking this attaches a default prior, which the copy below then overwrites.
         target.estimateProperty().set(source.isEstimated());
+        if (owner.library != null) target.setDrawType(source.valueType(), owner.library);
         target.clearElements();
         for (Param entry : source.elements()) {
-            copyParam(entry, target.addElement(entry.valueProperty().get(), owner.library), owner);
+            copyParam(entry, target.addElement(entry.valueProperty().get(), owner.library, owner.support), owner, copied);
         }
 
         Component sourceInner = source.priorProperty().get();
@@ -176,7 +188,7 @@ public final class Component {
                     : nested(sourceInner.generator(), owner.library, owner.argsEstimable, owner.support);
             target.priorProperty().set(targetInner);
         }
-        copy(sourceInner, targetInner);
+        copy(sourceInner, targetInner, copied);
     }
 
     private void rebuild(Generator chosen) {
@@ -188,12 +200,17 @@ public final class Component {
             // is not one of those: a Yule over an estimated species tree has to be told which taxa
             // it spans, because no partition is drawn on it.
             if (structural && WIRED.contains(argument.getName())) continue;
+            if (structural && "PhyloCTMC".equals(chosen.getName())
+                    && "mutationRate".equals(argument.getName())) continue;
             boolean clockMixture = structural && Analysis.isClockMixture(chosen);
             if (clockMixture && "components".equals(argument.getName())) continue;
+            if (structural && (Analysis.isGenotypeError(chosen) || Analysis.isReadCount(chosen))
+                    && "alignment".equals(argument.getName())) continue;
             Integer length = Library.declaredLength(chosen, argument.getName());
             if (clockMixture && "weights".equals(argument.getName())) length = 2;
             Param param = new Param(argument, argsEstimable && canBeStochastic(chosen, argument),
                     library, length);
+            param.allowReference(chosen);
             param.applyIndicatorBounds(chosen.getConstraints());
             if (structural && Library.CLOCK_MODEL.equals(library.roleOf(chosen))
                     && "Vector".equals(Library.head(argument.getType()))
@@ -240,14 +257,17 @@ public final class Component {
      * are, and asking the user would be asking them to repeat what the component already declares.
      * The argument to fill is the one the drawn type takes its {@code num} from, which by
      * convention is called {@code num} as well.
+     * When no length is declared, a new prior can use the current numeric entries instead.
+     * This is initial configuration only; existing or imported priors are not resized.
      */
     public static Component sized(Component prior, Param drawn) {
         Param count = prior.param("num");
         if (count != null) {
             if (drawn.dimensionExpression() != null) {
                 count.valueProperty().set(drawn.dimensionExpression());
-            } else if (drawn.dimension() != null) {
-                count.valueProperty().set(String.valueOf(drawn.dimension()));
+            } else {
+                Integer length = drawn.dimension() != null ? drawn.dimension() : drawn.initialVectorLength();
+                if (length != null) count.valueProperty().set(String.valueOf(length));
             }
         }
         if (drawn.isIndicator()) {

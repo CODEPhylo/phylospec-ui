@@ -92,6 +92,12 @@ public final class ComponentPanel {
                 for (Choice choice : sections.apply(group)) {
                     body.getChildren().add(section(analysis, choice));
                 }
+                if (group instanceof org.phylospec.ui.model.SiteModel model
+                        && "PhyloCTMC".equals(analysis.likelihood().name()) && model.mutationRate() != null) {
+                    GridPane rate = Form.grid();
+                    ParamRow.add(rate, analysis, model.mutationRate());
+                    body.getChildren().add(rate);
+                }
             }
         };
         rebuild.run();
@@ -134,6 +140,18 @@ public final class ComponentPanel {
                     + "Configure the relaxed branch in Clock Model. Weights are ordered [strict, relaxed]; "
                     + "[1/3, 2/3] with a uniform SVS indicator gives equal prior weight to strict, UC and AC.");
             Form.span(grid, composition);
+        }
+        if (component == analysis.likelihood() && analysis.isGenotypeError()) {
+            Form.span(grid, Form.caption("GT16 observation model: PhyloCTMC generates a latent alignment, "
+                    + "then GT16ErrorModel relates it to the observed genotype data. "
+                    + "Choose gt16 in Site Model; configure the shared tree and clock in their tabs. "
+                    + "Epsilon is sequencing error; delta is allelic dropout."));
+        }
+        if (component == analysis.likelihood() && analysis.isReadCount()) {
+            Form.span(grid, Form.caption("Read-count observation model: choose gt10 or gt16 in Site Model. "
+                    + "The backend samples the latent genotype alignment with its Gibbs operator. "
+                    + "Supply one positive s value per taxon, in matrix row order. "
+                    + "This UI supports one undated read-count partition; it does not normalise size factors."));
         }
         for (Param param : component.params()) {
             ParamRow.add(grid, analysis, param);

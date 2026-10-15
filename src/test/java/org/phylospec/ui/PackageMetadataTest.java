@@ -11,6 +11,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Collections;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.jar.JarEntry;
 import java.util.jar.JarOutputStream;
@@ -18,11 +19,14 @@ import java.util.jar.JarOutputStream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.phylospec.components.Generator;
+import org.phylospec.components.EngineSpecificationSchema;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.phylospec.ui.model.Analysis;
 import org.phylospec.ui.model.Component;
 import org.phylospec.ui.model.Param;
 import org.phylospec.ui.model.Partition;
 import org.phylospec.ui.spec.Library;
+import org.phylospec.ui.spec.EngineSupport;
 import org.phylospec.ui.spec.PackageMetadata;
 import org.phylospec.ui.spec.ScriptReader;
 import org.phylospec.ui.spec.ScriptWriter;
@@ -117,10 +121,15 @@ class PackageMetadataTest {
     }
 
     @Test
-    void discoveredPopulationFunctionWritesAndReadsAValidScript() {
+    void discoveredPopulationFunctionWritesAndReadsAValidScript() throws IOException {
         PackageMetadata metadata = PackageMetadata.discover();
         Library library = metadata.library();
-        Analysis analysis = new Analysis(library, metadata.support());
+        // The package declares a dependency; it does not itself implement the base data loader.
+        var engines = new ArrayList<>(metadata.engines());
+        engines.add(new ObjectMapper().readValue(Path.of("engines", "beast2-2.8.0-beta4.json").toFile(),
+                EngineSpecificationSchema.class));
+        EngineSupport support = EngineSupport.fromSpecifications(engines);
+        Analysis analysis = new Analysis(library, support);
         analysis.partitions().add(new Partition(Path.of("primates.nex")));
 
         Generator coalescent = library.overloads("Coalescent").stream()
@@ -134,14 +143,14 @@ class PackageMetadataTest {
         Generator packageFunction = library.overloads("testPopulationFunction").getFirst();
         Param populationSize = analysis.treePrior().param("populationSize");
         populationSize.priorProperty().set(Component.nested(
-                packageFunction, library, true, metadata.support(), "PopulationFunction"));
+                packageFunction, library, true, support, "PopulationFunction"));
 
         String script = ScriptWriter.write(analysis);
         assertTrue(script.startsWith("use test.functions.coalescent\n"), script);
         assertTrue(script.contains("PopulationFunction populationSize = testPopulationFunction()"), script);
         assertEquals(List.of(), Validator.check(library, script).all(), script);
 
-        Analysis loaded = ScriptReader.read(library, script);
+        Analysis loaded = ScriptReader.read(library, support, script);
         assertEquals("testPopulationFunction",
                 loaded.treePrior().param("populationSize").priorProperty().get().name());
     }
