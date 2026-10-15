@@ -64,4 +64,55 @@
             </plugin>
         </plugins>
     </build>
+
+    <profiles>
+        <profile>
+            <id>acceptance</id>
+            <properties>
+                <!-- Compatible, already-built sibling checkouts; each path can be overridden. -->
+                <phylospec.workspace>${project.basedir}/..</phylospec.workspace>
+                <phylospec.popfuncAdapter>${phylospec.workspace}/phylospec/integrations/beast3/popfunc/target/phylospec-adapter</phylospec.popfuncAdapter>
+                <phylospec.phyloncoAdapter>${phylospec.workspace}/beast-phylonco/phylonco-phylospec/target/phylonco-phylospec-adapter-1.2.1</phylospec.phyloncoAdapter>
+                <phylospec.clockAdapter>${phylospec.workspace}/RelaxClockAveraging/phylospec-adapter/target/phylospec-adapter-adapter-0.1.0</phylospec.clockAdapter>
+                <phylospec.calibratedAdapter>${phylospec.workspace}/CalibratedCPP/phylospec-adapter/target/calibratedcpp-phylospec-adapter-0.0.1-SNAPSHOT</phylospec.calibratedAdapter>
+                <phylospec.clockJars>${phylospec.workspace}/RelaxClockAveraging/phylospec-adapter/target/phylospec-adapter-0.1.0.jar${path.separator}${phylospec.workspace}/RelaxClockAveraging/mixture-beast/target/mixture-beast-0.1.0.jar</phylospec.clockJars>
+                <phylospec.l86Analysis>${phylospec.workspace}/beast-phylonco/phylonco-phylospec/target/l86-reference/analysis.phylospec</phylospec.l86Analysis>
+                <phylospec.catsAnalysis>${phylospec.workspace}/CalibratedCPP/phylospec-adapter/target/cats-reference/analysis.phylospec</phylospec.catsAnalysis>
+                <phylospec.primatesAnalysis>${phylospec.workspace}/CalibratedCPP/phylospec-adapter/target/primates-reference/analysis.phylospec</phylospec.primatesAnalysis>
+                <phylospec.datedAnalysis>${phylospec.workspace}/RelaxClockAveraging/phylospec-adapter/target/dated-reference/analysis.phylospec</phylospec.datedAnalysis>
+                <phylospec.ancestralAnalysis>${phylospec.workspace}/phylospec/integrations/beast3/popfunc/examples/ancestral-selection.phylospec</phylospec.ancestralAnalysis>
+                <phylospec.popfuncL86Analysis>${phylospec.workspace}/phylospec/target/popfunc-l86-checked/analysis.phylospec</phylospec.popfuncL86Analysis>
+            </properties>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <version>3.5.4</version>
+                        <configuration>
+                            <!-- JavaFX cannot restart after Platform.exit() in the same JVM. -->
+                            <reuseForks>false</reuseForks>
+                            <reportsDirectory>${project.build.directory}/acceptance-reports</reportsDirectory>
+                            <systemPropertyVariables>
+                                <phylospec.acceptance>true</phylospec.acceptance>
+                                <phylospec.deliveryTests>true</phylospec.deliveryTests>
+                                <phylospec.fxTests>true</phylospec.fxTests>
+                                <phylospec.popfuncAdapter>${phylospec.popfuncAdapter}</phylospec.popfuncAdapter>
+                                <phylospec.phyloncoAdapter>${phylospec.phyloncoAdapter}</phylospec.phyloncoAdapter>
+                                <phylospec.clockAdapter>${phylospec.clockAdapter}</phylospec.clockAdapter>
+                                <phylospec.calibratedAdapter>${phylospec.calibratedAdapter}</phylospec.calibratedAdapter>
+                                <phylospec.clockJars>${phylospec.clockJars}</phylospec.clockJars>
+                                <phylospec.l86Analysis>${phylospec.l86Analysis}</phylospec.l86Analysis>
+                                <phylospec.catsAnalysis>${phylospec.catsAnalysis}</phylospec.catsAnalysis>
+                                <phylospec.primatesAnalysis>${phylospec.primatesAnalysis}</phylospec.primatesAnalysis>
+                                <phylospec.datedAnalysis>${phylospec.datedAnalysis}</phylospec.datedAnalysis>
+                                <phylospec.ancestralAnalysis>${phylospec.ancestralAnalysis}</phylospec.ancestralAnalysis>
+                                <phylospec.popfuncL86Analysis>${phylospec.popfuncL86Analysis}</phylospec.popfuncL86Analysis>
+                            </systemPropertyVariables>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>

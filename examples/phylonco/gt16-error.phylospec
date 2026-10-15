@@ -1,0 +1,25 @@
+use phylonco.functions.substitution
+use phylonco.distributions.alignment
+
+data {
+    Alignment genotypes = fromNexus(file="genotypes.nex")
+}
+
+model {
+    Simplex freq ~ Dirichlet(concentration=[1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0])
+    QMatrix qMatrix = gt16(rates=[1.0, 1.0, 1.0, 1.0, 1.0, 1.0], freq=freq)
+    Rate birthRate ~ LogNormal(logMean=0.0, logSd=1.0)
+    Tree tree ~ Yule(birthRate=birthRate, taxa=taxa(genotypes))
+    Vector<Rate> branchRates ~ StrictClock(clockRate=1.0, tree=tree)
+    Probability epsilon ~ Beta(alpha=1.0, beta=1.0)
+    Probability delta ~ Beta(alpha=1.0, beta=1.0)
+    Alignment<Character> latent ~ PhyloCTMC(tree=tree, qMatrix=qMatrix, branchRates=branchRates)
+    Alignment<Character> observed ~ GT16ErrorModel(epsilon=epsilon, delta=delta, alignment=latent) observed as genotypes
+}
+
+mcmc {
+    Integer chainLength = 30
+    Integer defaultLogEvery = 1
+    String outputPrefix = "analysis"
+    Integer randomSeed = 12345
+}

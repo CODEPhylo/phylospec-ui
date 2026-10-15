@@ -1,0 +1,10 @@
+#NEXUS
+begin characters;
+    dimensions nchar=2;
+    format datatype=readCount;
+    matrix
+        cell_1 12:0:0:0,0:10:0:0
+        cell_2 8:2:0:0,0:9:1:0
+        cell_3 0:0:11:0,0:0:1:9
+        cell_4 0:0:8:2,0:0:0:12;
+end;

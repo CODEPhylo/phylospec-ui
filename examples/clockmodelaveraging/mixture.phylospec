@@ -1,0 +1,40 @@
+use clockmodelaveraging.functions.clock
+use clockmodelaveraging.distributions.clock
+use clockmodelaveraging.distributions.sequence
+
+data {
+    Alignment data = fromNexus(file="../calibratedcpp/four-taxa.nex")
+}
+
+model {
+    QMatrix qMatrix = jc69()
+    Rate birthRate ~ LogNormal(logMean=0.0, logSd=1.0)
+    Tree tree ~ Yule(birthRate=birthRate, taxa=taxa(data))
+    Integer indicator ~ DiscreteUniform(lower=0, upper=1)
+    PositiveReal ucldStdev ~ LogNormal(logMean=0.0, logSd=1.0)
+    PositiveReal sigma2 ~ LogNormal(logMean=0.0, logSd=1.0)
+    Real rootLogRate ~ Normal(mean=0.0, sd=1.0)
+    Vector<Rate> rates ~ svsRawBranchRates(
+        tree=tree, indicator=indicator, ucldStdev=ucldStdev,
+        sigma2=sigma2, rootLogRate=rootLogRate
+    )
+    Vector<Rate> branchRates = sharedRatesClock(
+        tree=tree, rates=rates, meanRate=1.0, normalize=false
+    )
+    Alignment<Character> dataAlignment ~ alignmentMixture(
+        components=[
+            PhyloCTMC(tree=tree, qMatrix=qMatrix,
+                branchRates~StrictClock(clockRate=1.0, tree=tree)),
+            PhyloCTMC(tree=tree, qMatrix=qMatrix, branchRates=branchRates)
+        ],
+        weights=[0.3333333333333333, 0.6666666666666666],
+        useAmbiguities=false
+    ) observed as data
+}
+
+mcmc {
+    Integer chainLength = 30
+    Integer defaultLogEvery = 1
+    String outputPrefix = "analysis"
+    Integer randomSeed = 12345
+}

@@ -1,0 +1,11 @@
+#NEXUS
+begin data;
+    dimensions ntax=4 nchar=20;
+    format datatype=nucleotideDiploid16 missing=? gap=-;
+    matrix
+        cell_1 0123456789ABCDEF0123
+        cell_2 0123456789ABCDEF0124
+        cell_3 1123456789ABCDEF0123
+        cell_4 1123456789ABCDEF0124
+    ;
+end;

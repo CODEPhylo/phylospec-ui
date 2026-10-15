@@ -1,5 +1,9 @@
 target/
 *.phylospec
+!examples/popfunc/gompertz.phylospec
+!examples/clockmodelaveraging/mixture.phylospec
+!examples/phylonco/gt16-error.phylospec
+!examples/phylonco/read-count.phylospec
 .idea/
 *.iml
 .DS_Store

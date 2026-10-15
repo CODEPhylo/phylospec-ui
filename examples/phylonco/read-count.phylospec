@@ -1,0 +1,37 @@
+use phylonco.functions.io
+use phylonco.functions.readcount
+use phylonco.functions.substitution
+use phylonco.distributions.readcount
+use phylonco.types
+
+data {
+    ReadCountData counts = fromReadCountNexus(file="read-counts.nex")
+}
+
+model {
+    Simplex freq ~ Dirichlet(concentration=[1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0])
+    QMatrix qMatrix = gt10(rates=[1.0, 1.0, 1.0, 1.0, 1.0, 1.0], freq=freq)
+    Rate birthRate ~ LogNormal(logMean=0.0, logSd=1.0)
+    Tree tree ~ Yule(birthRate=birthRate, taxa=readCountTaxa(counts=counts))
+    Vector<Rate> branchRates ~ StrictClock(clockRate=1.0, tree=tree)
+    Probability epsilon ~ Beta(alpha=1.0, beta=1.0)
+    Probability delta ~ Beta(alpha=1.0, beta=1.0)
+    Alignment<Character> latent ~ PhyloCTMC(tree=tree, qMatrix=qMatrix, branchRates=branchRates)
+    ReadCountData observed ~ ReadCountModel(
+        alignment=latent,
+        epsilon=epsilon,
+        delta=delta,
+        t=10.0,
+        v=2.0,
+        s=[1.0, 1.0, 1.0, 1.0],
+        w1=20.0,
+        w2=5.0
+    ) observed as counts
+}
+
+mcmc {
+    Integer chainLength = 30
+    Integer defaultLogEvery = 1
+    String outputPrefix = "analysis"
+    Integer randomSeed = 24680
+}
